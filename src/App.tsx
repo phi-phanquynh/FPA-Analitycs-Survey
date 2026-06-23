@@ -1518,7 +1518,7 @@ function CatalogGiftScreen({ diagnosis, pocCandidates, onBack, onReset }: Catalo
         <div className="catalog-gift-heading">
           <p className="eyebrow">Analytics Catalog</p>
           <h1 className="catalog-gift-title">
-            <span>分析カタログのあなたがやりたいことがあるかもしれません</span>
+            <span>FP&A分析カタログ：やりたいことが目で見てすぐ分かる</span>
             <span className="catalog-gift-note">※期間限定公開になりますので閉鎖時はご容赦ください</span>
           </h1>
         </div>
