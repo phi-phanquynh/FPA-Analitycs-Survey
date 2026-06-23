@@ -1,0 +1,11 @@
+.agents/
+.codex/
+qa/
+publish/
+node_modules/
+.pnpm-store/
+dist/
+*.log
+*.err.log
+*.out.log
+.vercel/
