@@ -824,8 +824,8 @@ function IntroScreen({ onStart, onBack }: IntroScreenProps) {
     },
     {
       label: "3",
-      title: "カードは全部で30枚",
-      text: "全30枚を見なくても、ラウンドの区切りから診断に進めます。"
+      title: "回答結果をAIが診断",
+      text: "カードは全部で30。回答が多いほど、診断精度が上がります。"
     }
   ];
 
