@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Check,
   ClipboardList,
+  ExternalLink,
   Eye,
   Layers3,
   ListChecks,
@@ -24,6 +25,7 @@ import type { AnalyticsItem, AppMode, Category, DiagnosisResult, LeadForm, Submi
 const STORAGE_KEY = "fpa-analytics-quest-state-v2";
 const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT as string | undefined;
 const SUBMISSION_RECIPIENT_EMAIL = "pphanquynh@tohmatsu.co.jp";
+const ANALYTICS_CATALOG_URL = "https://dtcon-eto.com/analytics-catalog/";
 
 type SavedState = {
   mode: AppMode;
@@ -707,7 +709,6 @@ function App() {
             diagnosis={diagnosisResult}
             pocCandidates={pocCandidates}
             onBack={() => setMode("result")}
-            onList={() => setMode("list")}
             onReset={resetAll}
           />
         )}
@@ -949,7 +950,6 @@ type RoundBreakScreenProps = {
 function RoundBreakScreen({ roundIndex, selectedItems, roundItems, onContinue, onQuestionnaire }: RoundBreakScreenProps) {
   const roundSelected = roundItems.filter((item) => selectedItems.some((selected) => selected.id === item.id));
   const isFinalRound = roundIndex >= rounds.length - 1;
-  const diagnosisPrimary = roundIndex >= 1 || isFinalRound;
   const diagnosisActionClassName = `primary-action${isFinalRound ? " final-diagnosis-action" : ""}`;
   const completedCardCount = rounds
     .slice(0, roundIndex + 1)
@@ -997,28 +997,22 @@ function RoundBreakScreen({ roundIndex, selectedItems, roundItems, onContinue, o
         )}
       </div>
       <div className="break-actions">
-        {diagnosisPrimary ? (
+        {isFinalRound ? (
           <>
             <button className={diagnosisActionClassName} type="button" onClick={onQuestionnaire}>
               <ClipboardList size={19} />
               診断に進む
             </button>
-            {!isFinalRound && (
-              <button className="secondary-action" type="button" onClick={onContinue}>
-                <ArrowRight size={19} />
-                続けてめくる
-              </button>
-            )}
           </>
         ) : (
           <>
-            <button className="primary-action" type="button" onClick={onContinue}>
-              <ArrowRight size={19} />
+            <button className="primary-action continue-round-action" type="button" onClick={onContinue}>
               続けてめくる
+              <ArrowRight size={20} />
             </button>
-            <button className="secondary-action" type="button" onClick={onQuestionnaire}>
-              <ClipboardList size={19} />
-              診断に進む
+            <button className="secondary-action compact diagnosis-shortcut-action" type="button" onClick={onQuestionnaire}>
+              <ClipboardList size={17} />
+              ここまでで診断に進む
             </button>
           </>
         )}
@@ -1175,9 +1169,13 @@ type QuestionnaireScreenProps = {
 function QuestionnaireScreen({ answers, otherAnswers, otherErrors, onChange, onOtherChange, onBack, onNext }: QuestionnaireScreenProps) {
   return (
     <motion.section className="questionnaire-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="section-title">
+      <div className="section-title questionnaire-title">
         <p className="eyebrow">Workshop Questionnaire</p>
         <h1>診断に必要な追加情報</h1>
+        <div className="questionnaire-final-badge" aria-label="この画面が最後です">
+          <Check size={16} />
+          この画面が最後です
+        </div>
         <p>カードで残した課題と合わせて、成熟度と優先確認カテゴリを判定します。</p>
       </div>
       <div className="question-grid">
@@ -1507,11 +1505,10 @@ type CatalogGiftScreenProps = {
   diagnosis: DiagnosisResult;
   pocCandidates: AnalyticsItem[];
   onBack: () => void;
-  onList: () => void;
   onReset: () => void;
 };
 
-function CatalogGiftScreen({ diagnosis, pocCandidates, onBack, onList, onReset }: CatalogGiftScreenProps) {
+function CatalogGiftScreen({ diagnosis, pocCandidates, onBack, onReset }: CatalogGiftScreenProps) {
   const topCategories = diagnosis.topCategories.slice(0, 3);
   const featuredItems = pocCandidates.slice(0, 3);
 
@@ -1529,21 +1526,17 @@ function CatalogGiftScreen({ diagnosis, pocCandidates, onBack, onList, onReset }
         <div className="catalog-gift-copy">
           <p>
             お礼として、FP&Aの分析テーマを課題別・用途別に探せる分析カタログをご紹介します。
-            公開リンクは準備中のため、現時点では概要のみ掲載しています。
+            以下の公開リンクからカタログを確認できます。
           </p>
-          <div className="catalog-link-status" aria-label="分析カタログのリンク状態">
-            <Check size={18} />
-            <span>公開リンク準備中</span>
-            <strong>現在のURLは掲載していません</strong>
-          </div>
+          <a className="catalog-link-status" href={ANALYTICS_CATALOG_URL} target="_blank" rel="noreferrer" aria-label="分析カタログを開く">
+            <ExternalLink size={18} />
+            <span>分析カタログを開く</span>
+            <strong>{ANALYTICS_CATALOG_URL}</strong>
+          </a>
           <div className="flow-actions">
             <button className="secondary-action compact" type="button" onClick={onBack}>
               <ArrowLeft size={18} />
               診断レポートに戻る
-            </button>
-            <button className="primary-action compact" type="button" onClick={onList}>
-              <ListChecks size={18} />
-              分析カード一覧を見る
             </button>
           </div>
         </div>
@@ -1762,11 +1755,11 @@ function ResultScreen({ lead, pocCandidates, diagnosis, submittedAt, onList, onC
         <div>
           <p className="eyebrow">Thank You Gift</p>
           <h2>診断完了のお礼に、FP&A主要分析カタログをご紹介します</h2>
-          <p>FP&Aで検討できる分析テーマを、課題別・用途別に探せる別サイトを用意しています。公開リンクは準備中のため、この画面では概要だけをご案内します。</p>
+          <p>FP&Aで検討できる分析テーマを、課題別・用途別に探せる公開カタログを用意しています。</p>
         </div>
         <button className="primary-action compact" type="button" onClick={onCatalogGift}>
           <Sparkles size={18} />
-          紹介ページを見る
+          カタログリンクを見る
         </button>
       </div>
       <div className="flow-actions">

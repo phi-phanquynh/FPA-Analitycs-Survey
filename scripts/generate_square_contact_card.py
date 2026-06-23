@@ -23,7 +23,7 @@ FONT_BOLD_PATH = Path(r"C:\Windows\Fonts\meiryob.ttc")
 FONT_NAME = "Meiryo"
 FONT_BOLD = "MeiryoBold"
 
-SITE_URL = "https://phi-phanquynh.github.io/FPA_Analytics-/"
+SITE_URL = "https://dtcon-eto.com/survey/"
 EMAIL = "pphanquynh@tohmatsu.co.jp"
 NAME = "ファン ウィン フィ"
 COMPANY = "合同会社デロイト トーマツ"
@@ -141,7 +141,6 @@ def draw_front(c: canvas.Canvas) -> None:
     rect(c, 12.4, 15.1, 36.2, 32.8, WHITE)
     stroke_rect(c, 12.4, 15.1, 36.2, 32.8, "#D9DEE0", line_width=0.45)
     draw_qr(c, SITE_URL, 16.1, 17.4, 28.8, DEEP_GREEN)
-    draw_text(c, 48.6, 14.0, "仮QR", 2.25, "#8E989D", align="right")
 
     draw_text(c, 30.5, 49.8, "貴社の経営管理課題を", 8.0, WHITE, align="center", font=FONT_BOLD)
     draw_text(c, 30.5, 54.2, "AI診断で見つけましょう", 8.0, WHITE, align="center", font=FONT_BOLD)

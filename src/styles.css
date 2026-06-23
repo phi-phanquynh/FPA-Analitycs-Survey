@@ -338,6 +338,51 @@ p {
   animation: final-diagnosis-icon 1.7s ease-in-out infinite;
 }
 
+.continue-round-action {
+  position: relative;
+  overflow: hidden;
+  min-width: 232px;
+  min-height: 58px;
+  padding: 15px 26px;
+  background: linear-gradient(135deg, var(--teal), #245f58);
+  box-shadow:
+    0 18px 34px rgba(47, 118, 109, 0.3),
+    0 0 0 6px rgba(47, 118, 109, 0.09);
+  font-size: 16px;
+  animation: continue-round-pulse 1.55s ease-in-out infinite;
+}
+
+.continue-round-action::after {
+  position: absolute;
+  inset: 0;
+  width: 42%;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  transform: translateX(-130%) skewX(-18deg);
+  animation: continue-round-sheen 2.2s ease-in-out infinite;
+}
+
+.continue-round-action svg {
+  position: relative;
+  z-index: 1;
+  animation: continue-arrow-nudge 1.05s ease-in-out infinite;
+}
+
+.continue-round-action:hover,
+.continue-round-action:focus-visible {
+  transform: translateY(-2px);
+  box-shadow:
+    0 22px 42px rgba(47, 118, 109, 0.36),
+    0 0 0 7px rgba(47, 118, 109, 0.12);
+}
+
+.diagnosis-shortcut-action {
+  color: var(--muted);
+  box-shadow: none;
+  white-space: nowrap;
+}
+
 .secondary-action,
 .reject-action {
   color: var(--ink);
@@ -354,6 +399,12 @@ p {
   min-height: 42px;
   padding: 10px 14px;
   font-size: 14px;
+}
+
+.break-actions .diagnosis-shortcut-action {
+  min-height: 38px;
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 .issue-hover-action {
@@ -428,6 +479,51 @@ p {
   }
 }
 
+@keyframes continue-round-pulse {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+
+  46% {
+    transform: translateY(-2px) scale(1.025);
+  }
+}
+
+@keyframes continue-round-sheen {
+  0%,
+  42% {
+    transform: translateX(-130%) skewX(-18deg);
+  }
+
+  72%,
+  100% {
+    transform: translateX(260%) skewX(-18deg);
+  }
+}
+
+@keyframes continue-arrow-nudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+
+  48% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes final-badge-pulse {
+  0%,
+  100% {
+    transform: rotate(-2deg) scale(1);
+  }
+
+  50% {
+    transform: rotate(-2deg) scale(1.035);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .issue-hover-action {
     transition: none;
@@ -435,12 +531,18 @@ p {
   }
 
   .final-diagnosis-action,
-  .final-diagnosis-action svg {
+  .final-diagnosis-action svg,
+  .continue-round-action,
+  .continue-round-action::after,
+  .continue-round-action svg,
+  .questionnaire-title .questionnaire-final-badge {
     animation: none;
   }
 
   .issue-hover-action:hover:not(:disabled),
-  .issue-hover-action:focus-visible:not(:disabled) {
+  .issue-hover-action:focus-visible:not(:disabled),
+  .continue-round-action:hover,
+  .continue-round-action:focus-visible {
     transform: none;
   }
 
@@ -823,6 +925,45 @@ p {
   grid-row: 1 / 4;
   grid-column: 2;
   align-self: center;
+}
+
+.questionnaire-title .questionnaire-final-badge {
+  position: relative;
+  grid-row: 1 / 4;
+  grid-column: 2;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-self: end;
+  align-self: center;
+  width: fit-content;
+  min-height: 44px;
+  padding: 10px 14px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--rust), #8f3d2d);
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  box-shadow:
+    0 14px 28px rgba(184, 92, 56, 0.24),
+    0 0 0 6px rgba(184, 92, 56, 0.1);
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+  transform: rotate(-2deg);
+  animation: final-badge-pulse 1.8s ease-in-out infinite;
+}
+
+.questionnaire-title .questionnaire-final-badge::after {
+  position: absolute;
+  inset: 4px;
+  pointer-events: none;
+  content: "";
+  border: 1px dashed rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+}
+
+.questionnaire-title .questionnaire-final-badge svg {
+  flex: 0 0 auto;
 }
 
 .analysis-grid {
@@ -1876,6 +2017,7 @@ p {
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(17, 23, 25, 0.06);
   font-weight: 900;
+  text-decoration: none;
 }
 
 .catalog-link-status strong {
@@ -2428,6 +2570,14 @@ p {
 
   .section-title {
     grid-template-columns: 1fr;
+  }
+
+  .questionnaire-title .questionnaire-final-badge {
+    grid-row: auto;
+    grid-column: 1;
+    justify-self: start;
+    margin-top: 2px;
+    transform: rotate(-1deg);
   }
 
   .section-title .compact {
