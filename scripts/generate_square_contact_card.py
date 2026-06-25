@@ -133,24 +133,23 @@ def draw_qr(c: canvas.Canvas, payload: str, x_mm: float, y_mm: float, size_mm: f
 
 def draw_front(c: canvas.Canvas) -> None:
     rect(c, 0, 0, PAGE_MM, PAGE_MM, BLACK)
-    rect(c, 3.0, 3.0, 0.9, 55.0, GREEN)
+    rect(c, 7.0, 15.0, 0.7, 29.0, GREEN)
     line(c, 8.0, 12.1, 53.0, 12.1, "#263237", width=0.35)
 
     draw_text(c, 30.5, 7.1, "FP&A Analytics Quest", 10.0, GREEN, align="center", font=FONT_BOLD)
 
-    rect(c, 12.4, 15.1, 36.2, 32.8, WHITE)
-    stroke_rect(c, 12.4, 15.1, 36.2, 32.8, "#D9DEE0", line_width=0.45)
-    draw_qr(c, SITE_URL, 16.1, 17.4, 28.8, DEEP_GREEN)
+    rect(c, 12.4, 13.2, 36.2, 32.8, WHITE)
+    stroke_rect(c, 12.4, 13.2, 36.2, 32.8, "#D9DEE0", line_width=0.45)
+    draw_qr(c, SITE_URL, 16.1, 15.4, 28.8, DEEP_GREEN)
 
-    draw_text(c, 30.5, 49.8, "貴社の経営管理課題を", 8.0, WHITE, align="center", font=FONT_BOLD)
-    draw_text(c, 30.5, 54.2, "AI診断で見つけましょう", 8.0, WHITE, align="center", font=FONT_BOLD)
+    draw_text(c, 30.5, 47.3, "自社の経営管理レベルを、", 8.0, WHITE, align="center", font=FONT_BOLD)
+    draw_text(c, 30.5, 51.5, "3分でチェック。", 8.0, WHITE, align="center", font=FONT_BOLD)
     c.showPage()
 
 
 def draw_back(c: canvas.Canvas) -> None:
     rect(c, 0, 0, PAGE_MM, PAGE_MM, PAPER)
-    rect(c, 0, 54.1, PAGE_MM, 6.9, BLACK)
-    rect(c, 3.0, 3.0, 0.9, 55.0, GREEN)
+    rect(c, 7.0, 13.8, 0.7, 31.0, GREEN)
 
     draw_text(
         c,
@@ -161,27 +160,27 @@ def draw_back(c: canvas.Canvas) -> None:
         INK,
         align="center",
         font=FONT_BOLD,
-        max_width_mm=53.0,
+        max_width_mm=48.0,
     )
 
-    rect(c, 12.4, 12.7, 36.2, 36.2, WHITE)
-    stroke_rect(c, 12.4, 12.7, 36.2, 36.2, HAIRLINE, line_width=0.45)
-    draw_qr(c, MAILTO_URL, 16.1, 16.4, 28.8, INK)
+    rect(c, 12.9, 12.0, 35.2, 34.6, WHITE)
+    stroke_rect(c, 12.9, 12.0, 35.2, 34.6, HAIRLINE, line_width=0.45)
+    draw_qr(c, MAILTO_URL, 16.1, 14.9, 28.8, INK)
 
     draw_text(
         c,
         30.5,
-        49.7,
-        "経営管理、ERP/EPM導入、AI導入について聞きたいことがあれば、\nそのまま送ってください。",
+        47.5,
+        "経営管理、ERP/EPM導入、AI導入について聞きたいことがあれば、\nお気軽にご連絡ください！",
         4.0,
         MUTED,
         align="center",
-        leading=5.8,
-        max_width_mm=52.0,
+        leading=4.9,
+        max_width_mm=48.0,
     )
-    draw_text(c, 54.0, 55.0, NAME, 3.0, WHITE, align="right", font=FONT_BOLD)
-    draw_text(c, 54.0, 57.3, f"{COMPANY} / {TEAM}", 3.0, "#AAB2B8", align="right")
-    draw_text(c, 54.0, 59.1, EMAIL, 3.0, "#AAB2B8", align="right")
+    draw_text(c, 54.5, 50.8, NAME, 3.0, INK, align="right", font=FONT_BOLD)
+    draw_text(c, 54.5, 52.2, f"{COMPANY} / {TEAM}", 3.0, MUTED, align="right")
+    draw_text(c, 54.5, 53.6, EMAIL, 3.0, MUTED, align="right")
     c.showPage()
 
 
