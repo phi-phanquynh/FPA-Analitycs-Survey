@@ -6,6 +6,7 @@ import {
   Check,
   ClipboardList,
   ExternalLink,
+  FileDown,
   LockKeyhole,
   Mail,
   RotateCcw,
@@ -431,17 +432,13 @@ function App() {
         {visibleMode === "roundBreak" && (
           <RoundBreakScreen
             key={`break-${currentQuestion.round}`}
-            progress={progress}
-            answers={state.answers}
             completedQuestionIndex={state.currentQuestionIndex}
-            onBack={() => setMode("deck")}
             onContinue={continueFromBreak}
           />
         )}
         {visibleMode === "leadGate" && completedDiagnosis && (
           <LeadGateScreen
             key="lead"
-            answers={state.answers}
             lead={state.lead}
             diagnosis={completedDiagnosis}
             submitState={submitState}
@@ -571,12 +568,6 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
             <span><BarChart3 size={18} /> 経営管理の現在地</span>
             <span><Check size={18} /> 取り組むべき5アクション</span>
           </div>
-          <div className="home-actions">
-            <button className="primary-action" type="button" onClick={onStart}>
-              診断を始める
-              <ArrowRight size={19} />
-            </button>
-          </div>
         </div>
       </section>
 
@@ -615,6 +606,22 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
           </article>
         </div>
       </section>
+
+      <section className="home-bottom-cta" aria-label="診断開始">
+        <motion.div
+          className="floating-cta-hint"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.24, duration: 0.4, ease: "easeOut" }}
+        >
+          <Sparkles size={16} />
+          <span>一番下のボタンから診断を始められます</span>
+        </motion.div>
+        <button className="primary-action home-start-final" type="button" onClick={onStart}>
+          診断を始める
+          <ArrowRight size={19} />
+        </button>
+      </section>
     </motion.main>
   );
 }
@@ -641,10 +648,6 @@ function DeckScreen({ question, answer, answers, progress, roundIndex, canGoBack
         <span>Round {roundIndex + 1}</span>
         <strong>{round.label}</strong>
         <em>{question.order} / 15問</em>
-        <button className="card-back-action" type="button" onClick={onBackOne} disabled={!canGoBack}>
-          <ArrowLeft size={15} />
-          1問戻る
-        </button>
         <ProgressQuestMap answers={answers} currentQuestionId={question.id} className="compact-map" />
       </aside>
 
@@ -676,6 +679,13 @@ function DeckScreen({ question, answer, answers, progress, roundIndex, canGoBack
         </div>
       </section>
 
+      <div className="deck-back-corner">
+        <button className="card-back-action" type="button" onClick={onBackOne} disabled={!canGoBack}>
+          <ArrowLeft size={15} />
+          1問戻る
+        </button>
+      </div>
+
       <aside className="progress-panel" aria-label="回答進捗">
         <span>進捗</span>
         <strong>{progressPercent}%</strong>
@@ -687,91 +697,33 @@ function DeckScreen({ question, answer, answers, progress, roundIndex, canGoBack
 }
 
 function RoundBreakScreen({
-  progress,
-  answers,
   completedQuestionIndex,
-  onBack,
   onContinue
 }: {
-  progress: ReturnType<typeof buildProgressSummary>;
-  answers: Record<string, AnswerValue>;
   completedQuestionIndex: number;
-  onBack: () => void;
   onContinue: () => void;
 }) {
   const completedQuestion = diagnosticQuestions[completedQuestionIndex];
   const completedRound = roundByKey[completedQuestion.round];
-  const roundQuestions = diagnosticQuestions.filter((question) => question.round === completedQuestion.round);
-  const roundDiagnosis = progress.roundDiagnostics.find((round) => round.round === completedQuestion.round);
   const nextRound = diagnosticRounds[diagnosticRounds.findIndex((round) => round.key === completedQuestion.round) + 1];
-  const nextQuestion = nextRound ? diagnosticQuestions.find((question) => question.round === nextRound.key) : undefined;
+  const encouragement = nextRound
+    ? `${completedRound.label}まで完了しました。次は${nextRound.label}で、経営管理をもう一段深く見ていきます。`
+    : "15問の回答が揃いました。ここから、貴社の現在地と次の一手をレポートにまとめます。";
 
   return (
     <motion.main className="break-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-      <section className="break-copy">
-        <p className="eyebrow">Round Clear</p>
-        <h1>{completedRound.label}ラウンドが完了しました</h1>
-        <p>
-          {roundExperienceLabels[completedRound.key]}ための5領域が揃いました。次のラウンドで、診断レポートの精度をもう一段上げます。
-        </p>
-      </section>
-
-      <section className="round-achievement" aria-label={`${completedRound.label}ラウンド達成`}>
-        <div>
-          <Sparkles size={22} />
-          <span>{completedRound.label}マップ完成</span>
-          <strong>{nextRound ? `${nextRound.label}ラウンドを解放しました` : "詳細レポートを生成できます"}</strong>
-        </div>
-        <ProgressQuestMap answers={answers} currentQuestionId={nextQuestion?.id} />
-      </section>
-
-      <section className="break-dashboard">
-        <article>
-          <span>ここまでの回答</span>
-          <strong>{progress.answeredCount} / 15問</strong>
-          <p>15問すべてに回答するまで、詳細レポートには進めません。</p>
-        </article>
-        <article>
-          <span>{completedRound.label}スコア</span>
-          <strong>{roundDiagnosis?.score ?? 0} / {roundDiagnosis?.maxScore ?? 10}</strong>
-          <p>{completedRound.summary}</p>
-        </article>
-        <article>
-          <span>次のラウンド</span>
-          <strong>{nextRound?.label ?? "詳細レポート"}</strong>
-          <p>{nextRound?.summary ?? "全15問の回答を使って、成熟度と5つのアクションをまとめます。"}</p>
-        </article>
-      </section>
-
-      <section className="round-map" aria-label={`${completedRound.label}ラウンドの5領域マップ`}>
-        {roundQuestions.map((question) => {
-          const domain = domainById[question.domainId];
-          return (
-            <article key={question.id} style={{ "--accent": domain.accent } as CSSProperties}>
-              <span>{domain.shortName}</span>
-              <strong>{answerLabel(answers[question.id])}</strong>
-              <p>{question.examples}</p>
-            </article>
-          );
-        })}
-      </section>
-
-      <div className="break-actions">
-        <button className="secondary-action" type="button" onClick={onBack}>
-          <ArrowLeft size={18} />
-          回答を見直す
-        </button>
+      <section className="break-simple-card">
+        <p>{encouragement}</p>
         <button className="primary-action continue-round-action" type="button" onClick={onContinue}>
-          {nextRound ? `${nextRound.label}ラウンドへ進む` : "詳細レポートへ進む"}
+          {nextRound ? "次の5問へ進む" : "詳細レポートへ進む"}
           <ArrowRight size={18} />
         </button>
-      </div>
+      </section>
     </motion.main>
   );
 }
 
 type LeadGateScreenProps = {
-  answers: Record<string, AnswerValue>;
   lead: LeadForm;
   diagnosis: CompletedDiagnosis;
   submitState: "idle" | "sending" | "error";
@@ -781,7 +733,7 @@ type LeadGateScreenProps = {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 };
 
-function LeadGateScreen({ answers, lead, diagnosis, submitState, submitError, onBack, onUpdate, onSubmit }: LeadGateScreenProps) {
+function LeadGateScreen({ lead, diagnosis, submitState, submitError, onBack, onUpdate, onSubmit }: LeadGateScreenProps) {
   const firstAction = diagnosis.recommendedActions[0];
 
   return (
@@ -790,40 +742,34 @@ function LeadGateScreen({ answers, lead, diagnosis, submitState, submitError, on
         <p className="eyebrow">Report Ready</p>
         <h1>15問の回答が揃いました</h1>
         <p>
-          診断レポートは生成済みです。入力後に、総合成熟度、領域別スコア、次に取り組むべき5つのアクションを表示します。
+          まず1つだけ提案を表示します。会社情報を送信すると、詳細スコアと5つのアクションをすべて確認できます。
         </p>
-        <div className="report-ready-panel">
-          <div>
+        <div className="lead-visual-summary" aria-label="生成済みレポートの簡易プレビュー">
+          <div className="lead-stage-chip">
             <Check size={18} />
-            <span>診断マップ完成</span>
+            <span>現在地</span>
             <strong>{managementLevelName(diagnosis.overallStage.key)}</strong>
           </div>
-          <ProgressQuestMap answers={answers} />
-        </div>
-        <div className="report-preview-grid">
-          <article>
-            <span><Sparkles size={18} /></span>
-            <strong>{managementLevelName(diagnosis.overallStage.key)}</strong>
-            <p>経営管理レベル</p>
-          </article>
-          <article>
-            <span><BarChart3 size={18} /></span>
-            <strong>3ラウンド</strong>
-            <p>基本・応用・AIのスコア</p>
-          </article>
-          <article>
-            <span><ClipboardList size={18} /></span>
-            <strong>5アクション</strong>
-            <p>領域ごとの次の一手</p>
-          </article>
+          <div className="lead-mini-bars" aria-label="基本、応用、AIの簡易スコア">
+            {diagnosis.roundDiagnostics.map((round) => {
+              const percent = Math.round((round.score / round.maxScore) * 100);
+              return (
+                <article key={round.round}>
+                  <span>{round.label}</span>
+                  <div className="lead-mini-track"><i style={{ width: `${percent}%` }} /></div>
+                </article>
+              );
+            })}
+          </div>
         </div>
         {firstAction && (
           <div className="first-action-preview">
-            <span>最初の推奨アクション</span>
+            <span>提案アクションの一部</span>
             <strong>{firstAction.domainName}</strong>
             <p>{firstAction.title}</p>
           </div>
         )}
+        <p className="report-unlock-copy">送信後、成熟度・領域別スコア・5つの推奨アクションをすべて表示します。</p>
       </section>
 
       <form className="lead-form" onSubmit={onSubmit}>
@@ -880,12 +826,22 @@ function ResultScreen({
   submittedAt: string | null;
   onReset: () => void;
 }) {
+  function handlePrintReport() {
+    window.requestAnimationFrame(() => window.print());
+  }
+
   return (
     <motion.main className="result-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -8 }}>
       <section className="result-head">
-        <p className="eyebrow">Diagnostic Report</p>
-        <h1>{lead.company} 向け FP&A診断結果</h1>
-        <p>{submittedAt ? new Date(submittedAt).toLocaleString("ja-JP") : ""}</p>
+        <div>
+          <p className="eyebrow">Diagnostic Report</p>
+          <h1>{lead.company} 向け FP&A診断結果</h1>
+          <p>{submittedAt ? new Date(submittedAt).toLocaleString("ja-JP") : ""}</p>
+        </div>
+        <button className="primary-action compact report-print-action no-print" type="button" onClick={handlePrintReport}>
+          <FileDown size={18} />
+          PDF保存
+        </button>
       </section>
 
       <section className={`overall-card ${stageClass(diagnosis.overallStage.key)}`}>
