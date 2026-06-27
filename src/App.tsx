@@ -558,8 +558,7 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
           <div className="home-copy">
             <p className="eyebrow">FP&A Management Diagnosis</p>
             <h1 className="home-title">
-              <span>経営管理の5領域を、</span>
-              <span>どこまでできているか</span>
+              <span>経営管理をどこまでできているか</span>
               <span>見える化します</span>
             </h1>
             <p>
