@@ -13,8 +13,8 @@ import {
   Send,
   Sparkles,
   Target,
+  ThumbsUp,
   TriangleAlert,
-  X
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { chartName, chartSvg } from "./chart";
@@ -26,6 +26,10 @@ const STORAGE_KEY = "fpa-analytics-quest-state-v2";
 const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT as string | undefined;
 const SUBMISSION_RECIPIENT_EMAIL = "pphanquynh@tohmatsu.co.jp";
 const ANALYTICS_CATALOG_URL = "https://dtcon-eto.com/analytics-catalog/";
+
+function scrollToPageTop() {
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
 
 type SavedState = {
   mode: AppMode;
@@ -345,9 +349,14 @@ function App() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
 
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(scrollToPageTop);
+    return () => window.cancelAnimationFrame(frame);
+  }, [state.mode, state.currentRound, state.currentCard, state.detailId]);
+
   function setMode(mode: AppMode) {
     setState((current) => ({ ...current, mode }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToPageTop();
   }
 
   function resetAll() {
@@ -430,14 +439,14 @@ function App() {
 
   function openDetail(item: AnalyticsItem) {
     setState((current) => ({ ...current, detailId: item.id, mode: "detail" }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToPageTop();
   }
 
   function openNextDetail(item: AnalyticsItem) {
     const currentIndex = analytics.findIndex((entry) => entry.id === item.id);
     const nextItem = analytics[(currentIndex + 1) % analytics.length] ?? analytics[0];
     setState((current) => ({ ...current, detailId: nextItem.id, mode: "detail" }));
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    scrollToPageTop();
   }
 
   function updateAnswer(questionIndex: number, option: string, checked: boolean) {
@@ -881,7 +890,7 @@ function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount
       <div className="round-panel">
         <span>Round {roundIndex + 1}</span>
         <strong>このラウンド {cardIndex + 1}枚目</strong>
-        <em>あと{remaining}枚で小休止</em>
+        <em>あと{remaining}枚でちょっと休憩</em>
       </div>
 
       <div className="candidate-stack" aria-live="polite">
@@ -910,13 +919,16 @@ function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount
             <span>あなたの会社ではできていますか</span>
             <h2>{item.capability}</h2>
           </div>
-          <div className="chart-frame" dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent, "large") }} />
+          <div className="prompt-connector" aria-hidden="true">
+            <span />
+          </div>
           <div className="reveal-panel">
             <div className="reveal-heading">
               <span>実現のために必要な分析</span>
-              <em>{chartName(item.chart)}</em>
+              <em>分析イメージ: {chartName(item.chart)}</em>
             </div>
             <strong>{item.title}</strong>
+            <div className="chart-frame analysis-image" dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent, "large") }} />
             <div className="action-note">
               <span>打てるアクション</span>
               <p>{item.decision}</p>
@@ -927,7 +939,7 @@ function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount
 
       <div className="deck-actions">
         <button className="reject-action" type="button" onClick={onDismiss}>
-          <X size={22} />
+          <ThumbsUp size={22} />
           課題なし/不要
         </button>
         <button className="accept-action issue-hover-action" type="button" onClick={onInterested}>
@@ -1172,9 +1184,15 @@ function QuestionnaireScreen({ answers, otherAnswers, otherErrors, onChange, onO
       <div className="section-title questionnaire-title">
         <p className="eyebrow">Workshop Questionnaire</p>
         <h1>診断に必要な追加情報</h1>
-        <div className="questionnaire-final-badge" aria-label="この画面が最後です">
-          <Check size={16} />
-          この画面が最後です
+        <div className="questionnaire-badge-row">
+          <div className="questionnaire-final-badge" aria-label="この画面が最後です">
+            <Check size={16} />
+            この画面が最後です
+          </div>
+          <div className="questionnaire-multiple-badge" aria-label="アンケートは複数選択できます">
+            <ListChecks size={16} />
+            複数選択可
+          </div>
         </div>
         <p>カードで残した課題と合わせて、成熟度と優先確認カテゴリを判定します。</p>
       </div>
