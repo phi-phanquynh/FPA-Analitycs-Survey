@@ -1,4 +1,13 @@
-import type { AnalyticsItem, Category, CategoryDiagnosis, DiagnosisResult, DiagnosisSignal, MaturityLevel } from "./types";
+import type {
+  AnalyticsItem,
+  Category,
+  CategoryDiagnosis,
+  DiagnosisResult,
+  DiagnosisSignal,
+  MaturityLevel,
+  MaturityStage,
+  MaturityStageKey
+} from "./types";
 
 const CARD_SCORE_MAX = 70;
 const QUESTIONNAIRE_SCORE_MAX = 30;
@@ -80,6 +89,19 @@ const firstActions: Record<string, string> = {
   story: "差異理由、論点、打ち手を経営会議向けの説明文に変換する"
 };
 
+const pocThemes: Record<string, string> = {
+  performance: "経営KPI統合ダッシュボード",
+  growth: "売上増減要因とパイプライン分析",
+  profitability: "利益ブリッジとセグメント別採算分析",
+  cost: "費用構造マップとコストドライバー分析",
+  cash: "13週キャッシュフロー予測と運転資本分析",
+  forecast: "ローリング・着地見込フォーキャスト",
+  scenario: "ベスト・ベース・ワーストケース分析",
+  allocation: "投資対効果と資本配分ポートフォリオ",
+  risk: "財務KPIリスクヒートマップ",
+  story: "月次業績コメント自動生成"
+};
+
 const categoryCheckTemplates: Record<string, string> = {
   performance: "KPI定義、閾値、責任部門、会議での利用タイミング",
   growth: "顧客・商品・商談データ、単価/数量、解約や受注確度の定義",
@@ -92,6 +114,44 @@ const categoryCheckTemplates: Record<string, string> = {
   risk: "閾値、異常値、集中先、アラート時の対応責任",
   story: "会議体、読み手、説明粒度、差異コメントの作成プロセス"
 };
+
+export function maturityStageFromIssueScore(issueScore: number): MaturityStage {
+  if (issueScore <= 14) {
+    return {
+      key: "advanced",
+      label: "先進",
+      range: "0-14",
+      summary: "主要な分析は比較的整っており、次は自動化や意思決定への接続を高める段階です。",
+      actionTone: "維持・高度化"
+    };
+  }
+  if (issueScore <= 54) {
+    return {
+      key: "standard",
+      label: "標準",
+      range: "15-54",
+      summary: "一定の分析はありますが、粒度、更新頻度、会議での使い方に整備余地があります。",
+      actionTone: "改善余地"
+    };
+  }
+  return {
+    key: "immature",
+    label: "未熟",
+    range: "55-100",
+    summary: "経営判断に必要な分析が不足している可能性が高く、優先テーマを絞って整備する段階です。",
+    actionTone: "優先整備"
+  };
+}
+
+export function pendingMaturityStage(): MaturityStage {
+  return {
+    key: "pending",
+    label: "判定保留",
+    range: "-",
+    summary: "入力が少ないため、現時点では成熟度を確定せず、参考診断として扱います。",
+    actionTone: "入力追加"
+  };
+}
 
 export function maturityFromIssueScore(issueScore: number): MaturityLevel {
   if (issueScore <= 14) {
@@ -192,7 +252,49 @@ function categoryReason(selectedCount: number, questionnaireScore: number, categ
   if (questionnaireScore > 0) {
     return `カード選択は少ないものの、質問票の回答から${categoryName}に関連する論点が見えます。`;
   }
-  return `現時点の入力では、${categoryName}の診断シグナルは比較的弱めです。`;
+  return `現時点の入力では、${categoryName}は優先整備領域としては比較的低めです。`;
+}
+
+function recommendedActionForStage(stage: MaturityStage, categoryId: string) {
+  const firstAction = firstActions[categoryId] ?? "診断根拠、必要データ、責任者を確認する";
+
+  if (stage.key === "advanced") {
+    return `${firstAction}。あわせて、更新の自動化と会議でのアクション管理までつなげる。`;
+  }
+  if (stage.key === "standard") {
+    return `${firstAction}。まずは粒度、責任者、更新頻度をそろえ、月次で使える形にする。`;
+  }
+  if (stage.key === "pending") {
+    return "課題カードと質問票の回答を追加し、診断に使う根拠を増やす。";
+  }
+
+  return `${firstAction}。最初は対象範囲を絞り、1つの会議で使える最小構成から始める。`;
+}
+
+function nextCheckForStage(stage: MaturityStage, categoryId: string) {
+  const checkTemplate = categoryCheckTemplates[categoryId] ?? "必要データ、責任者、更新頻度";
+
+  if (stage.key === "advanced") {
+    return `${checkTemplate}に加えて、意思決定後のアクション追跡まで確認する`;
+  }
+  if (stage.key === "standard") {
+    return `${checkTemplate}を確認し、会議で使える粒度にそろえる`;
+  }
+  if (stage.key === "pending") {
+    return "この領域に関する課題カード、会議体、利用データを追加で確認する";
+  }
+
+  return `${checkTemplate}の所在を確認し、まず使えるデータから着手する`;
+}
+
+function buildStageCounts(categoryDiagnostics: CategoryDiagnosis[]) {
+  return categoryDiagnostics.reduce(
+    (counts, category) => ({
+      ...counts,
+      [category.maturityStage.key]: counts[category.maturityStage.key] + 1
+    }),
+    { immature: 0, standard: 0, advanced: 0, pending: 0 } satisfies Record<MaturityStageKey, number>
+  );
 }
 
 function buildEvidence(selectedItems: AnalyticsItem[], answerValues: string[], uncertaintyCount: number) {
@@ -240,6 +342,7 @@ export function buildDiagnosis({ selectedItems, answers, categories }: BuildDiag
   const meaningfulAnswerCount = answerValues.filter((answer) => answer !== "分からない").length;
   const { categoryScores, categorySignals, uncertaintySignals } = questionnaireScoreByCategory(answerValues, categories);
   const uncertaintyCount = uncertaintySignals.length;
+  const isInsufficient = selectedItems.length === 0 && (meaningfulAnswerCount < 2 || uncertaintyCount >= 4);
 
   const categoryDiagnostics = categories
     .map((category) => {
@@ -248,6 +351,7 @@ export function buildDiagnosis({ selectedItems, answers, categories }: BuildDiag
       const cardScore = Math.min(CARD_SCORE_MAX, Math.round((selectedCount / CARDS_PER_CATEGORY) * CARD_SCORE_MAX));
       const questionnaireScore = categoryScores[category.id] ?? 0;
       const issueScore = Math.min(100, cardScore + questionnaireScore);
+      const maturityStage = isInsufficient ? pendingMaturityStage() : maturityStageFromIssueScore(issueScore);
       const cardSignals = selectedForCategory.map<DiagnosisSignal>((item) => ({
         source: "card",
         label: item.title,
@@ -266,9 +370,13 @@ export function buildDiagnosis({ selectedItems, answers, categories }: BuildDiag
         selectedCount,
         selectedTitles: selectedForCategory.map((item) => item.title),
         maturity: maturityFromIssueScore(issueScore),
+        maturityStage,
         signals: [...cardSignals, ...(categorySignals[category.id] ?? [])],
         reason: categoryReason(selectedCount, questionnaireScore, category.name),
-        firstAction: firstActions[category.id] ?? "診断根拠、必要データ、責任者を確認する"
+        firstAction: firstActions[category.id] ?? "診断根拠、必要データ、責任者を確認する",
+        recommendedAction: recommendedActionForStage(maturityStage, category.id),
+        nextCheck: nextCheckForStage(maturityStage, category.id),
+        pocTheme: pocThemes[category.id] ?? category.poc
       } satisfies CategoryDiagnosis;
     })
     .sort((a, b) => b.issueScore - a.issueScore || b.selectedCount - a.selectedCount || categories.findIndex((category) => category.id === a.categoryId) - categories.findIndex((category) => category.id === b.categoryId));
@@ -277,7 +385,6 @@ export function buildDiagnosis({ selectedItems, answers, categories }: BuildDiag
   const topScoreAverage = topCategories.length
     ? Math.round(topCategories.reduce((sum, category) => sum + category.issueScore, 0) / topCategories.length)
     : 0;
-  const isInsufficient = selectedItems.length === 0 && (meaningfulAnswerCount < 2 || uncertaintyCount >= 4);
   const overallMaturity = isInsufficient
     ? {
         level: 1,
@@ -286,19 +393,25 @@ export function buildDiagnosis({ selectedItems, answers, categories }: BuildDiag
         summary: "課題ありカードまたは具体的な質問票回答が不足しているため、診断は初期仮説に留めます。"
       } satisfies MaturityLevel
     : maturityFromIssueScore(topScoreAverage);
+  const overallStage = isInsufficient ? pendingMaturityStage() : maturityStageFromIssueScore(topScoreAverage);
+  const stageCounts = isInsufficient
+    ? { immature: 0, standard: 0, advanced: 0, pending: categories.length } satisfies Record<MaturityStageKey, number>
+    : buildStageCounts(categoryDiagnostics);
 
   const summary = isInsufficient
     ? "入力が少ないため、現時点では参考診断です。まず課題ありカードと利用データを確認してください。"
-    : `上位課題は${topCategories.map((category) => category.categoryName).join("、")}です。${overallMaturity.summary}`;
+    : `総合判定は「${overallStage.label}」です。優先して整える領域は${topCategories.map((category) => category.categoryName).join("、")}です。${overallStage.summary}`;
 
   return {
     status: isInsufficient ? "insufficient" : "diagnosed",
     overallIssueScore: isInsufficient ? 0 : topScoreAverage,
     overallMaturity,
+    overallStage,
     summary,
     evidence: buildEvidence(selectedItems, answerValues, uncertaintyCount),
     topCategories,
     categoryDiagnostics,
+    stageCounts,
     uncertaintySignals,
     nextChecks: buildNextChecks(topCategories, uncertaintyCount, isInsufficient),
     isPocReferenceOnly: isInsufficient || selectedItems.length === 0

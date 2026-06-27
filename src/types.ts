@@ -35,6 +35,7 @@ export type AnalyticsItem = {
   category: string;
   title: string;
   question: string;
+  analysisDescription: string;
   capability: string;
   data: string;
   decision: string;
@@ -55,6 +56,16 @@ export type MaturityLevel = {
   summary: string;
 };
 
+export type MaturityStageKey = "immature" | "standard" | "advanced" | "pending";
+
+export type MaturityStage = {
+  key: MaturityStageKey;
+  label: "未熟" | "標準" | "先進" | "判定保留";
+  range: string;
+  summary: string;
+  actionTone: string;
+};
+
 export type DiagnosisSignal = {
   source: "card" | "questionnaire" | "uncertainty";
   label: string;
@@ -73,19 +84,25 @@ export type CategoryDiagnosis = {
   selectedCount: number;
   selectedTitles: string[];
   maturity: MaturityLevel;
+  maturityStage: MaturityStage;
   signals: DiagnosisSignal[];
   reason: string;
   firstAction: string;
+  recommendedAction: string;
+  nextCheck: string;
+  pocTheme: string;
 };
 
 export type DiagnosisResult = {
   status: "diagnosed" | "insufficient";
   overallIssueScore: number;
   overallMaturity: MaturityLevel;
+  overallStage: MaturityStage;
   summary: string;
   evidence: string[];
   topCategories: CategoryDiagnosis[];
   categoryDiagnostics: CategoryDiagnosis[];
+  stageCounts: Record<MaturityStageKey, number>;
   uncertaintySignals: DiagnosisSignal[];
   nextChecks: string[];
   isPocReferenceOnly: boolean;

@@ -20,7 +20,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { chartName, chartSvg } from "./chart";
 import { analytics, categories, questionnaire } from "./data";
 import { buildDiagnosis } from "./diagnosis";
-import type { AnalyticsItem, AppMode, Category, DiagnosisResult, LeadForm, SubmissionPayload } from "./types";
+import type { AnalyticsItem, AppMode, Category, DiagnosisResult, LeadForm, MaturityStageKey, SubmissionPayload } from "./types";
 
 const STORAGE_KEY = "fpa-analytics-quest-state-v2";
 const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT as string | undefined;
@@ -169,65 +169,50 @@ function normalizedAnswers(answers: Record<string, string[]>, otherAnswers: Reco
 }
 
 function maturityLabel(diagnosis: DiagnosisResult) {
-  return diagnosis.status === "insufficient"
-    ? "入力不足"
-    : `Lv${diagnosis.overallMaturity.level} ${diagnosis.overallMaturity.label}`;
+  return diagnosis.overallStage.label;
 }
 
-const DIAGNOSIS_SIGNAL_HELP = "診断シグナルは、課題ありカードと質問票から検知した論点量です。点数評価ではなく、着手判断の根拠として扱います。";
-const MATURITY_SCORE_HELP = "総合成熟度は、課題ありカードと質問票から見たFP&A分析の整備度です。Lv5が最も成熟、Lv1が要着手です。";
+const MATURITY_FRAME_HELP = "成熟度は、課題カードと質問票から10領域を「未熟・標準・先進」で整理した初期診断です。正式な監査やベンチマークではありません。";
+const REPORT_BENEFITS = [
+  "10領域の成熟度",
+  "優先して整える領域",
+  "領域別の次アクション",
+  "初回PoC候補"
+];
 
-type ActionDecision = {
-  label: string;
-  description: string;
+const STAGE_META: Record<MaturityStageKey, { shortLabel: string; description: string }> = {
+  immature: {
+    shortLabel: "未熟",
+    description: "優先して整備したい領域"
+  },
+  standard: {
+    shortLabel: "標準",
+    description: "運用をそろえる領域"
+  },
+  advanced: {
+    shortLabel: "先進",
+    description: "維持・高度化する領域"
+  },
+  pending: {
+    shortLabel: "保留",
+    description: "入力を増やして判定する領域"
+  }
 };
 
-function clampIssueScore(score: number) {
-  return Math.min(100, Math.max(0, score));
+function stageClassName(stage: MaturityStageKey) {
+  return `stage-${stage}`;
 }
 
-function formatDiagnosisSignal(score: number) {
-  return `${clampIssueScore(score)}pt`;
-}
-
-function actionDecisionFromIssueScore(score: number): ActionDecision {
-  const clamped = clampIssueScore(score);
-  if (clamped <= 14) {
-    return {
-      label: "継続観察",
-      description: "現時点では大きな着手判断より、他テーマの後で状況を確認する領域です。"
-    };
-  }
-  if (clamped <= 34) {
-    return {
-      label: "状況確認",
-      description: "まず現状資料、利用会議、責任者を確認して、着手要否を見極める領域です。"
-    };
-  }
-  if (clamped <= 54) {
-    return {
-      label: "重点確認",
-      description: "課題の芽が見えており、データと会議体を確認して検証テーマ化する領域です。"
-    };
-  }
-  if (clamped <= 74) {
-    return {
-      label: "優先着手",
-      description: "経営判断への影響が大きく、初回検証テーマとして優先的に扱う領域です。"
-    };
-  }
-  return {
-    label: "早期着手",
-    description: "判断に必要な分析が不足している可能性が高く、早めに検証を始める領域です。"
-  };
+function stageCountItems(diagnosis: DiagnosisResult) {
+  return (["immature", "standard", "advanced"] as MaturityStageKey[]).map((key) => ({
+    key,
+    label: STAGE_META[key].shortLabel,
+    count: diagnosis.stageCounts[key]
+  }));
 }
 
 function diagnosisActionLabel(diagnosis: DiagnosisResult) {
-  return diagnosis.status === "insufficient" ? "判定保留" : actionDecisionFromIssueScore(diagnosis.overallIssueScore).label;
-}
-
-function diagnosisSignalLabel(diagnosis: DiagnosisResult) {
-  return diagnosis.status === "insufficient" ? "参考値" : formatDiagnosisSignal(diagnosis.overallIssueScore);
+  return diagnosis.overallStage.actionTone;
 }
 
 function pocThemeLabel(diagnosis: DiagnosisResult) {
@@ -263,9 +248,10 @@ function generateSummaryText(
   const topCategoryLines =
     diagnosis.topCategories
       .map((category, index) => (
-        `${index + 1}. ${category.categoryName} / 着手判断 ${actionDecisionFromIssueScore(category.issueScore).label} / 診断シグナル ${formatDiagnosisSignal(category.issueScore)}\n`
+        `${index + 1}. ${category.categoryName} / 判定 ${category.maturityStage.label}\n`
         + `   ${category.reason}\n`
-        + `   最初の打ち手: ${category.firstAction}`
+        + `   次のアクション: ${category.recommendedAction}\n`
+        + `   確認すること: ${category.nextCheck}`
       ))
       .join("\n") || "・入力不足のため未判定";
   const evidenceLines = diagnosis.evidence.map((item) => `・${item}`).join("\n");
@@ -276,9 +262,9 @@ function generateSummaryText(
     lead ? `${lead.company} / ${lead.title} / ${lead.name} / ${lead.email}` : "未入力",
     "",
     "【総合診断】",
-    `${maturityLabel(diagnosis)}（Lvが高いほど成熟） / 着手判断 ${diagnosisActionLabel(diagnosis)} / 診断シグナル ${diagnosisSignalLabel(diagnosis)}`,
+    `総合判定: ${maturityLabel(diagnosis)} / ${diagnosis.overallStage.actionTone}`,
     diagnosis.summary,
-    DIAGNOSIS_SIGNAL_HELP,
+    MATURITY_FRAME_HELP,
     "",
     "【診断根拠】",
     evidenceLines || "・未入力",
@@ -336,6 +322,10 @@ function App() {
   const diagnosisResult = useMemo(
     () => buildDiagnosis({ selectedItems, answers: questionnaireAnswers, categories }),
     [selectedItems, questionnaireAnswers]
+  );
+  const deckDiagnosisResult = useMemo(
+    () => buildDiagnosis({ selectedItems, answers: {}, categories }),
+    [selectedItems]
   );
   const pocCandidates = useMemo(
     () => selectPocCandidates(selectedItems, state.selectionOrder, diagnosisResult),
@@ -646,6 +636,7 @@ function App() {
             roundIndex={state.currentRound}
             selectedItems={selectedItems}
             roundItems={currentRoundItems}
+            diagnosis={deckDiagnosisResult}
             onContinue={continueRound}
             onQuestionnaire={() => setMode("questionnaire")}
           />
@@ -782,8 +773,16 @@ function HomeScreen({ onStart, onList }: HomeScreenProps) {
           <span className="home-title-line">経営管理とは</span>
         </h1>
         <p>
-          経営管理に関する質問カードに答えると、あなたの会社に必要な経営分析と施策をAIが診断します
+          経営管理に関する質問カードに答えると、FP&Aの10領域を「未熟・標準・先進」で整理し、次に取るべきアクションまで診断します。
         </p>
+        <div className="home-benefits" aria-label="診断後に分かること">
+          {REPORT_BENEFITS.map((benefit) => (
+            <span key={benefit}>
+              <Check size={14} />
+              {benefit}
+            </span>
+          ))}
+        </div>
         <div className="home-actions">
           <button className="primary-action" type="button" onClick={onStart}>
             <Sparkles size={20} />
@@ -824,18 +823,18 @@ function IntroScreen({ onStart, onBack }: IntroScreenProps) {
   const steps = [
     {
       label: "1",
-      title: "自社で実現できているかを確認",
-      text: "カードごとに、自社でその分析や判断ができているかを確認します。"
+      title: "できている領域と課題領域を分ける",
+      text: "各カードで、自社でその分析や判断ができているかを短く確認します。"
     },
     {
       label: "2",
-      title: "「課題あり」を見つける",
-      text: "できていない、または優先して改善したい分析を課題ありとして残します。"
+      title: "10領域の暫定診断を見ながら進む",
+      text: "小休止ごとに、未熟・標準・先進の分布と重点領域を確認できます。"
     },
     {
       label: "3",
-      title: "回答結果をAIが診断",
-      text: "カードは全部で30。回答が多いほど、診断精度が上がります。"
+      title: "最後にアクションまで受け取る",
+      text: "診断結果では、領域別の次アクションと初回PoC候補まで整理します。"
     }
   ];
 
@@ -843,8 +842,8 @@ function IntroScreen({ onStart, onBack }: IntroScreenProps) {
     <motion.section className="intro-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
       <div className="intro-copy">
         <p className="eyebrow">How It Works</p>
-        <h1>準備はいいですか？</h1>
-        <p>各カードは、自社でその分析や判断ができているかを確認するための問いです。課題があるものを残すと、最後にAIが診断を行います。</p>
+        <h1>3分で、FP&Aの現在地を整理します</h1>
+        <p>各カードは、自社でその分析や判断ができているかを確認するための問いです。回答が増えるほど、10領域の判定とアクション提案の精度が高まります。</p>
         <div className="intro-actions">
           <button className="primary-action" type="button" onClick={onStart}>
             <Target size={20} />
@@ -928,6 +927,7 @@ function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount
               <em>分析イメージ: {chartName(item.chart)}</em>
             </div>
             <strong>{item.title}</strong>
+            <p className="analysis-description">{item.analysisDescription}</p>
             <div className="chart-frame analysis-image" dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent, "large") }} />
             <div className="action-note">
               <span>打てるアクション</span>
@@ -940,7 +940,7 @@ function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount
       <div className="deck-actions">
         <button className="reject-action" type="button" onClick={onDismiss}>
           <ThumbsUp size={22} />
-          課題なし/不要
+          できている
         </button>
         <button className="accept-action issue-hover-action" type="button" onClick={onInterested}>
           <TriangleAlert size={22} />
@@ -955,11 +955,12 @@ type RoundBreakScreenProps = {
   roundIndex: number;
   selectedItems: AnalyticsItem[];
   roundItems: AnalyticsItem[];
+  diagnosis: DiagnosisResult;
   onContinue: () => void;
   onQuestionnaire: () => void;
 };
 
-function RoundBreakScreen({ roundIndex, selectedItems, roundItems, onContinue, onQuestionnaire }: RoundBreakScreenProps) {
+function RoundBreakScreen({ roundIndex, selectedItems, roundItems, diagnosis, onContinue, onQuestionnaire }: RoundBreakScreenProps) {
   const roundSelected = roundItems.filter((item) => selectedItems.some((selected) => selected.id === item.id));
   const isFinalRound = roundIndex >= rounds.length - 1;
   const diagnosisActionClassName = `primary-action${isFinalRound ? " final-diagnosis-action" : ""}`;
@@ -967,18 +968,23 @@ function RoundBreakScreen({ roundIndex, selectedItems, roundItems, onContinue, o
     .slice(0, roundIndex + 1)
     .reduce((sum, round) => sum + round.length, 0);
   const remainingCardCount = Math.max(0, analytics.length - completedCardCount);
+  const confidencePercent = Math.round((completedCardCount / analytics.length) * 100);
+  const nextRoundCount = Math.min(remainingCardCount, rounds[roundIndex + 1]?.length ?? remainingCardCount);
+  const nextPrecisionTargets = (diagnosis.topCategories.length ? diagnosis.topCategories : diagnosis.categoryDiagnostics)
+    .slice(0, 3)
+    .map((category) => category.categoryName);
   const progressMessage = remainingCardCount > 0
-    ? `全${analytics.length}枚のうち、ここまでで${completedCardCount}枚を確認しました。あと${remainingCardCount}枚です。もう少しだけ、がんばりましょう。`
-    : `全${analytics.length}枚の確認が完了しました。ここまでの選択内容で診断に進めます。`;
+    ? `全${analytics.length}枚のうち${completedCardCount}枚を確認しました。次の${nextRoundCount}問で、重点領域の確からしさを高めます。`
+    : `全${analytics.length}枚の確認が完了しました。ここまでの選択内容で最終診断に進めます。`;
   const breakTitles = [
-    "少しずつ貴社の状況が見えてきました",
-    "貴社の優先課題がより明確になってきました",
-    "診断に必要な全体像が整理できました"
+    "10領域の現在地が見え始めています",
+    "重点領域の輪郭がはっきりしてきました",
+    "診断に必要な全体像がそろいました"
   ];
   const breakDescriptions = [
-    "ここまでの回答から、経営管理上の論点が少しずつ見え始めています。さらに精度を高める場合は、次のラウンドも確認してください。",
-    "これまでの回答をもとに、優先して確認すべき領域が絞られてきました。必要に応じて、この時点から診断に進めます。",
-    "全ラウンドの回答をもとに、貴社の経営管理の強みと課題を診断できます。"
+    "ここまでの回答を、最終結果と同じ「未熟・標準・先進」のフレームで暫定整理しています。",
+    "次のラウンドに進むと、いま見えている重点領域が本当に優先かを確認できます。",
+    "このあと質問票で会議体やデータの状況を補足すると、次アクションまで具体化できます。"
   ];
   const breakTitle = breakTitles[Math.min(roundIndex, breakTitles.length - 1)];
   const breakDescription = breakDescriptions[Math.min(roundIndex, breakDescriptions.length - 1)];
@@ -991,21 +997,40 @@ function RoundBreakScreen({ roundIndex, selectedItems, roundItems, onContinue, o
         <p>{breakDescription}</p>
         <p className="break-progress-note">{progressMessage}</p>
       </div>
-      <div className="break-score">
-        <div>
-          <span>このラウンド</span>
-          <strong>{roundSelected.length}</strong>
+      <div className="break-diagnosis-panel">
+        <div className="break-confidence">
+          <span>ここまでの診断精度</span>
+          <strong>{confidencePercent}%</strong>
+          <div className="confidence-track" aria-hidden="true">
+            <i style={{ width: `${confidencePercent}%` }} />
+          </div>
+          <p>回答数が増えるほど、領域別の判定とアクション提案が具体化します。</p>
         </div>
-        <div>
-          <span>累計課題あり</span>
-          <strong>{selectedItems.length}</strong>
+        <StageDistribution diagnosis={diagnosis} />
+        <div className="break-focus-list">
+          <span>現時点の重点領域トップ3</span>
+          {diagnosis.topCategories.slice(0, 3).map((category, index) => (
+            <article key={category.categoryId} className={stageClassName(category.maturityStage.key)}>
+              <em>{index + 1}</em>
+              <div>
+                <strong>{category.categoryName}</strong>
+                <small>{category.maturityStage.label} / {category.maturityStage.actionTone}</small>
+              </div>
+            </article>
+          ))}
         </div>
+        {remainingCardCount > 0 && (
+          <div className="break-next-focus">
+            <span>次の10問で精度が上がる領域</span>
+            <p>{nextPrecisionTargets.join("、")}を中心に、判定の根拠を増やします。</p>
+          </div>
+        )}
       </div>
       <div className="mini-cards">
         {roundSelected.length ? (
           roundSelected.map((item) => <SmallCandidate key={item.id} item={item} />)
         ) : (
-          <p className="empty-note">このラウンドでは課題ありカードがありませんでした。</p>
+          <p className="empty-note">このラウンドでは「課題あり」はありませんでした。次のラウンドで別の観点を確認できます。</p>
         )}
       </div>
       <div className="break-actions">
@@ -1040,6 +1065,24 @@ function SmallCandidate({ item }: { item: AnalyticsItem }) {
       <span>{category.name}</span>
       <strong>{item.title}</strong>
     </article>
+  );
+}
+
+function StageDistribution({ diagnosis, compact = false }: { diagnosis: DiagnosisResult; compact?: boolean }) {
+  const visibleItems = diagnosis.status === "insufficient"
+    ? ([{ key: "pending" as MaturityStageKey, label: STAGE_META.pending.shortLabel, count: diagnosis.stageCounts.pending }])
+    : stageCountItems(diagnosis);
+
+  return (
+    <div className={`stage-distribution ${compact ? "is-compact" : ""} ${diagnosis.status === "insufficient" ? "is-pending-only" : ""}`} aria-label="成熟度分布">
+      {visibleItems.map((item) => (
+        <div className={stageClassName(item.key)} key={item.key}>
+          <span>{item.label}</span>
+          <strong>{item.count}</strong>
+          <small>{STAGE_META[item.key].description}</small>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1194,7 +1237,7 @@ function QuestionnaireScreen({ answers, otherAnswers, otherErrors, onChange, onO
             複数選択可
           </div>
         </div>
-        <p>カードで残した課題と合わせて、成熟度と優先確認カテゴリを判定します。</p>
+        <p>カードで残した課題と合わせて、10領域の成熟度と次に取るべきアクションを具体化します。</p>
       </div>
       <div className="question-grid">
         {questionnaire.map((item, questionIndex) => (
@@ -1282,18 +1325,18 @@ function LeadGateScreen({
     <motion.section className="lead-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
       <div className="preview-panel">
         <p className="eyebrow">Result Preview</p>
-        <h1>診断結果を作成中です</h1>
+        <h1>詳細レポートを作成できます</h1>
         <p className="preview-summary">{diagnosis.summary}</p>
         <div className="preview-stats">
           <div className="preview-maturity-stat">
-            <span>総合成熟度</span>
+            <span>総合判定</span>
             <strong>{maturityLabel(diagnosis)}</strong>
             <MaturityIndicator diagnosis={diagnosis} compact />
           </div>
           <div>
-            <span>着手判断</span>
+            <span>診断の方向性</span>
             <strong>{diagnosisActionLabel(diagnosis)}</strong>
-            <em>診断シグナル {diagnosisSignalLabel(diagnosis)}</em>
+            <em>{diagnosis.overallStage.summary}</em>
           </div>
           <div>
             <span>{pocThemeLabel(diagnosis)}（PoC案）</span>
@@ -1301,13 +1344,14 @@ function LeadGateScreen({
             <em>{pocThemeHelp(diagnosis)}</em>
           </div>
         </div>
+        <StageDistribution diagnosis={diagnosis} compact />
         <div className="diagnosis-preview-list">
           {diagnosis.topCategories.slice(0, 3).map((category) => (
-            <div key={category.categoryId}>
+            <div key={category.categoryId} className={stageClassName(category.maturityStage.key)}>
               <span>{category.categoryName}</span>
               <div className="priority-stack">
-                <strong>{actionDecisionFromIssueScore(category.issueScore).label}</strong>
-                <em>{formatDiagnosisSignal(category.issueScore)}</em>
+                <strong>{category.maturityStage.label}</strong>
+                <em>{category.maturityStage.actionTone}</em>
               </div>
             </div>
           ))}
@@ -1317,15 +1361,14 @@ function LeadGateScreen({
             <SmallCandidate key={item.id} item={item} />
           ))}
         </div>
-        <p className="diagnosis-note">{MATURITY_SCORE_HELP} {DIAGNOSIS_SIGNAL_HELP}</p>
-        <p className="diagnosis-note">この診断は入力内容に基づく初期仮説です。正式な監査やベンチマークではありません。</p>
+        <p className="diagnosis-note">{MATURITY_FRAME_HELP}</p>
       </div>
 
       <div className="report-depth-cue" aria-label="送信後に確認できる詳細レポート">
         <div className="depth-cue-copy">
           <p className="eyebrow">Full Report</p>
-          <h2>回答結果送信後に、詳細レポートで深堀できます</h2>
-          <p>プレビューは要点だけです。次の画面では、カテゴリ別の診断シグナル、優先確認カテゴリ、初回検証テーマ、次に確認することまで整理して表示します。</p>
+          <h2>入力後に、アクション付きの詳細レポートを表示します</h2>
+          <p>プレビューは要点だけです。次の画面では、10領域の判定、優先整備領域、領域別の次アクション、初回PoC候補まで整理して表示します。</p>
         </div>
         <div className="depth-report-visual" aria-hidden="true">
           <motion.div
@@ -1337,16 +1380,18 @@ function LeadGateScreen({
             <ArrowRight size={20} />
           </motion.div>
           <div className="depth-report-card score-map">
-            <span>診断シグナルMAP</span>
-            <strong>{diagnosis.topCategories[0]?.categoryName ?? "重点カテゴリ"}</strong>
-            <div className="depth-bars">
-              {diagnosis.topCategories.slice(0, 3).map((category) => (
-                <i key={category.categoryId} style={{ width: `${clampIssueScore(category.issueScore)}%` }} />
+            <span>10領域の成熟度</span>
+            <strong>未熟・標準・先進で整理</strong>
+            <div className="depth-stage-bars">
+              {stageCountItems(diagnosis).map((item) => (
+                <i className={stageClassName(item.key)} key={item.key}>
+                  {item.label} {item.count}
+                </i>
               ))}
             </div>
           </div>
           <div className="depth-report-card">
-            <span>優先確認カテゴリ</span>
+            <span>優先整備領域</span>
             <strong>上位3領域</strong>
           </div>
           <div className="depth-report-card">
@@ -1354,15 +1399,15 @@ function LeadGateScreen({
             <strong>{pocThemeValue(diagnosis, pocCandidates.length)}</strong>
           </div>
           <div className="depth-report-card">
-            <span>次に確認すること</span>
-            <strong>確認項目を整理</strong>
+            <span>次アクション</span>
+            <strong>領域別に提示</strong>
           </div>
         </div>
       </div>
 
       <form className="lead-form" onSubmit={onSubmit}>
         <p className="eyebrow">Create Report</p>
-        <h2>貴社の診断結果を作成します</h2>
+        <h2>詳細レポートを表示する</h2>
         <div className="form-grid">
           <label>
             会社名
@@ -1381,7 +1426,7 @@ function LeadGateScreen({
             <input type="email" value={lead.email} onChange={(event) => onUpdate("email", event.target.value)} required />
           </label>
         </div>
-        <p className="consent-copy">入力情報と回答結果を送信し、診断レポートを表示します。</p>
+        <p className="consent-copy">入力情報と回答結果を送信し、アクション付きの診断レポートを表示します。</p>
         {submitError && <p className="form-error">{submitError}</p>}
         <div className="flow-actions">
           <button className="secondary-action compact" type="button" onClick={onBack}>
@@ -1390,7 +1435,7 @@ function LeadGateScreen({
           </button>
           <button className="primary-action compact" type="submit" disabled={submitState === "sending"}>
             <Send size={18} />
-            {submitState === "sending" ? "送信中" : "回答結果を送信"}
+            {submitState === "sending" ? "送信中" : "詳細レポートを見る"}
           </button>
         </div>
       </form>
@@ -1408,56 +1453,34 @@ type ResultScreenProps = {
   onReset: () => void;
 };
 
-function ScoreMeter({ score, label = "診断シグナル" }: { score: number; label?: string }) {
-  const shouldReduceMotion = useReducedMotion();
-  const clampedScore = clampIssueScore(score);
-
-  return (
-    <div className="score-meter" aria-label={`${label} ${formatDiagnosisSignal(clampedScore)}。シグナルが大きいほど先に確認する領域`}>
-      <motion.span
-        initial={shouldReduceMotion ? false : { width: 0 }}
-        animate={{ width: `${clampedScore}%` }}
-        transition={{ duration: shouldReduceMotion ? 0 : 0.7, ease: "easeOut" }}
-      />
-    </div>
-  );
-}
-
 function MaturityIndicator({ diagnosis, compact = false }: { diagnosis: DiagnosisResult; compact?: boolean }) {
   const shouldReduceMotion = useReducedMotion();
-  const level = diagnosis.status === "insufficient" ? 1 : diagnosis.overallMaturity.level;
-  const progress = Math.max(0, Math.min(100, ((level - 1) / 4) * 100));
-  const pinLabel = diagnosis.status === "insufficient" ? "入力不足" : `Lv${level}`;
+  const stageKeys = ["immature", "standard", "advanced"] as MaturityStageKey[];
+  const activeStage = diagnosis.overallStage.key;
   const helpText = diagnosis.status === "insufficient"
-    ? "課題ありカードと質問票の入力が少ないため、総合成熟度は参考値です。"
-    : "課題ありカードと質問票から見た、FP&A分析の整備度です。課題シグナルが強いほどLvは低くなります。";
+    ? "入力が少ないため、総合判定は保留です。カードと質問票の回答を増やすと判定できます。"
+    : diagnosis.overallStage.summary;
 
   return (
     <div
       className={`maturity-indicator ${compact ? "is-compact" : ""} ${diagnosis.status === "insufficient" ? "is-insufficient" : ""}`}
-      aria-label={`総合成熟度 ${maturityLabel(diagnosis)}。${helpText}`}
+      aria-label={`総合判定 ${maturityLabel(diagnosis)}。${helpText}`}
     >
       <p>{helpText}</p>
-      <div className="maturity-scale-labels" aria-hidden="true">
-        <span>Lv1 要着手</span>
-        <span>Lv5 高度化</span>
+      <div className="maturity-stage-track" aria-hidden="true">
+        {stageKeys.map((stageKey, index) => (
+          <motion.span
+            className={`${stageClassName(stageKey)} ${activeStage === stageKey ? "is-active" : ""}`}
+            key={stageKey}
+            initial={shouldReduceMotion ? false : { opacity: 0.55, y: 5 }}
+            animate={{ opacity: activeStage === stageKey ? 1 : 0.72, y: 0 }}
+            transition={{ delay: shouldReduceMotion ? 0 : index * 0.04, duration: shouldReduceMotion ? 0 : 0.25 }}
+          >
+            {STAGE_META[stageKey].shortLabel}
+          </motion.span>
+        ))}
       </div>
-      <div className="maturity-track" aria-hidden="true">
-        <motion.span
-          className="maturity-fill"
-          initial={shouldReduceMotion ? false : { width: 0 }}
-          animate={{ width: `${progress}%` }}
-          transition={{ duration: shouldReduceMotion ? 0 : 0.72, ease: "easeOut" }}
-        />
-        <motion.i
-          className="maturity-pin"
-          initial={shouldReduceMotion ? false : { left: "0%" }}
-          animate={{ left: `${progress}%` }}
-          transition={{ duration: shouldReduceMotion ? 0 : 0.72, ease: "easeOut" }}
-        >
-          <span>{pinLabel}</span>
-        </motion.i>
-      </div>
+      {diagnosis.status === "insufficient" && <small className="maturity-pending-note">判定保留</small>}
     </div>
   );
 }
@@ -1465,27 +1488,28 @@ function MaturityIndicator({ diagnosis, compact = false }: { diagnosis: Diagnosi
 function DiagnosisVisualization({ diagnosis }: { diagnosis: DiagnosisResult }) {
   const shouldReduceMotion = useReducedMotion();
   const priorityIds = new Set(diagnosis.topCategories.slice(0, 3).map((category) => category.categoryId));
-  const categoriesForViz = diagnosis.categoryDiagnostics.slice(0, 6);
+  const categoriesForViz = diagnosis.categoryDiagnostics;
+  const stageKeys = ["immature", "standard", "advanced"] as MaturityStageKey[];
 
   return (
     <section className="diagnosis-visualization" aria-labelledby="diagnosis-viz-title">
       <div className="viz-head">
         <p className="eyebrow">Diagnosis Map</p>
-        <h2 id="diagnosis-viz-title">カテゴリ別 診断シグナル</h2>
-        <p>{DIAGNOSIS_SIGNAL_HELP} 上位カテゴリほど、先に確認すべきFP&Aテーマです。</p>
+        <h2 id="diagnosis-viz-title">10領域の成熟度マップ</h2>
+        <p>各領域を「未熟・標準・先進」で整理します。上位カテゴリほど、先に整える価値が高い領域です。</p>
       </div>
       <div className="viz-axis" aria-hidden="true">
-        <span>シグナル小</span>
-        <span>シグナル大</span>
+        <span>未熟</span>
+        <span>標準</span>
+        <span>先進</span>
       </div>
       <div className="viz-list">
         {categoriesForViz.map((category, index) => {
-          const score = clampIssueScore(category.issueScore);
           const isPriority = priorityIds.has(category.categoryId);
 
           return (
             <motion.div
-              className={`viz-row ${isPriority ? "is-priority" : ""}`}
+              className={`viz-row ${stageClassName(category.maturityStage.key)} ${isPriority ? "is-priority" : ""}`}
               key={category.categoryId}
               initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -1495,20 +1519,27 @@ function DiagnosisVisualization({ diagnosis }: { diagnosis: DiagnosisResult }) {
                 <span>{index + 1}</span>
                 <div>
                   <strong>{category.categoryName}</strong>
-                  <em>{category.maturity.label}</em>
+                  <em>{category.maturityStage.actionTone}</em>
                 </div>
               </div>
-              <div className="viz-bar-wrap">
-                <div className="viz-bar" aria-label={`${category.categoryName} 診断シグナル ${formatDiagnosisSignal(score)}`}>
-                  <motion.span
-                    initial={shouldReduceMotion ? false : { width: 0 }}
-                    animate={{ width: `${score}%` }}
-                    transition={{ delay: shouldReduceMotion ? 0 : 0.15 + index * 0.06, duration: shouldReduceMotion ? 0 : 0.8, ease: "easeOut" }}
-                  />
+              <div className="viz-stage-wrap">
+                <div className="viz-stage-road" aria-label={`${category.categoryName} ${category.maturityStage.label}`}>
+                  {category.maturityStage.key === "pending" ? (
+                    <span className="stage-pending is-active">保留</span>
+                  ) : (
+                    stageKeys.map((stageKey) => (
+                      <span
+                        className={`${stageClassName(stageKey)} ${category.maturityStage.key === stageKey ? "is-active" : ""}`}
+                        key={stageKey}
+                      >
+                        {STAGE_META[stageKey].shortLabel}
+                      </span>
+                    ))
+                  )}
                 </div>
                 <div className="viz-priority-value">
-                  <strong>{actionDecisionFromIssueScore(score).label}</strong>
-                  <small>{formatDiagnosisSignal(score)}</small>
+                  <strong>{category.maturityStage.label}</strong>
+                  <small>{isPriority ? "優先確認" : category.maturityStage.actionTone}</small>
                 </div>
               </div>
             </motion.div>
@@ -1618,7 +1649,7 @@ function CatalogGiftScreen({ diagnosis, pocCandidates, onBack, onReset }: Catalo
               <span>{index + 1}</span>
               <div>
                 <h3>{category.categoryName}</h3>
-                <p>着手判断 {actionDecisionFromIssueScore(category.issueScore).label} / 診断シグナル {formatDiagnosisSignal(category.issueScore)}</p>
+                <p>判定 {category.maturityStage.label} / {category.maturityStage.actionTone}</p>
               </div>
             </article>
           ))}
@@ -1673,62 +1704,68 @@ function ResultScreen({ lead, pocCandidates, diagnosis, submittedAt, onList, onC
 
       <div className="diagnosis-overview">
         <article className={`maturity-card ${diagnosis.status === "insufficient" ? "is-warning" : ""}`}>
-          <span>総合診断</span>
+          <span>いまの状態</span>
           <h2>{maturityLabel(diagnosis)}</h2>
           <p>{diagnosis.summary}</p>
           <MaturityIndicator diagnosis={diagnosis} />
-          <p className="score-help">{MATURITY_SCORE_HELP} {DIAGNOSIS_SIGNAL_HELP}</p>
-          <div className="score-row">
-            <div>
-              <span>着手判断</span>
-              <strong>{diagnosisActionLabel(diagnosis)}</strong>
-              <small>診断シグナル {diagnosisSignalLabel(diagnosis)}</small>
-            </div>
-            <ScoreMeter score={diagnosis.overallIssueScore} />
-          </div>
+          <StageDistribution diagnosis={diagnosis} compact />
         </article>
         <article className="diagnosis-evidence">
-          <h2>入力根拠</h2>
+          <h2>入力から分かったこと</h2>
           <ul>
             {diagnosis.evidence.map((item) => (
               <li key={item}>{item}</li>
             ))}
           </ul>
-          <p>入力内容に基づく初期仮説です。正式な監査やベンチマークではありません。{DIAGNOSIS_SIGNAL_HELP}</p>
+          <p>{MATURITY_FRAME_HELP}</p>
         </article>
       </div>
 
       <DiagnosisVisualization diagnosis={diagnosis} />
 
       <div className="result-section-title">
-        <h2>優先確認カテゴリ</h2>
-        <p>課題ありカードと質問票回答を合わせて、先に着手判断すべき領域を並べています。</p>
+        <h2>優先整備領域トップ3</h2>
+        <p>課題カードと質問票回答を合わせて、先に整える価値が高い領域を並べています。</p>
       </div>
       <div className="diagnosis-card-grid">
         {diagnosis.topCategories.map((category) => (
-          <article className="diagnosis-category-card" key={category.categoryId}>
+          <article className={`diagnosis-category-card ${stageClassName(category.maturityStage.key)}`} key={category.categoryId}>
             <div className="category-card-head">
-              <span>{category.maturity.label}</span>
-              <strong>{actionDecisionFromIssueScore(category.issueScore).label}</strong>
+              <span>{category.maturityStage.actionTone}</span>
+              <strong>{category.maturityStage.label}</strong>
             </div>
             <h3>{category.categoryName}</h3>
-            <ScoreMeter score={category.issueScore} />
-            <p className="score-help">診断シグナル {formatDiagnosisSignal(category.issueScore)}。{actionDecisionFromIssueScore(category.issueScore).description}</p>
             <p>{category.reason}</p>
             <dl>
               <div>
-                <dt>カード由来</dt>
-                <dd>{formatDiagnosisSignal(category.cardScore)}</dd>
+                <dt>次にやること</dt>
+                <dd>{category.recommendedAction}</dd>
               </div>
               <div>
-                <dt>質問票由来</dt>
-                <dd>{formatDiagnosisSignal(category.questionnaireScore)}</dd>
+                <dt>確認すること</dt>
+                <dd>{category.nextCheck}</dd>
               </div>
             </dl>
             <div className="first-action">
-              <span>最初の打ち手</span>
-              <p>{category.firstAction}</p>
+              <span>初回PoC候補</span>
+              <p>{category.pocTheme}</p>
             </div>
+          </article>
+        ))}
+      </div>
+
+      <div className="result-section-title">
+        <h2>10領域別の次アクション</h2>
+        <p>すべての領域について、次に確認すべき観点を短く整理しています。</p>
+      </div>
+      <div className="action-roadmap">
+        {diagnosis.categoryDiagnostics.map((category) => (
+          <article className={stageClassName(category.maturityStage.key)} key={category.categoryId}>
+            <div>
+              <span>{category.maturityStage.label}</span>
+              <h3>{category.categoryName}</h3>
+            </div>
+            <p>{category.recommendedAction}</p>
           </article>
         ))}
       </div>
