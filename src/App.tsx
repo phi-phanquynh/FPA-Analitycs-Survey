@@ -615,7 +615,7 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
           transition={{ delay: 0.24, duration: 0.4, ease: "easeOut" }}
         >
           <Sparkles size={16} />
-          <span>一番下のボタンから診断を始められます</span>
+          <span>下の丸いボタンから診断を始められます</span>
         </motion.div>
         <button className="primary-action home-start-final" type="button" onClick={onStart}>
           診断を始める
