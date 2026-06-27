@@ -4,7 +4,6 @@ import {
   ArrowRight,
   BarChart3,
   Check,
-  ClipboardList,
   ExternalLink,
   FileDown,
   LockKeyhole,
@@ -567,7 +566,6 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
               15問に答えるだけで、5領域の現在地と、次に取り組むべき5つのアクションを確認できます。
             </p>
             <div className="home-benefits" aria-label="診断で分かること">
-              <span><ClipboardList size={18} /> 5領域の達成度</span>
               <span><BarChart3 size={18} /> 経営管理の現在地</span>
               <span><Check size={18} /> 取り組むべき5アクション</span>
             </div>

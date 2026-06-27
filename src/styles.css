@@ -284,9 +284,9 @@ p {
 
 .home-benefits {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
-  max-width: 720px;
+  max-width: 510px;
   margin-top: 22px;
 }
 
@@ -799,6 +799,18 @@ p {
   justify-self: start;
   align-self: start;
   margin-top: -4px;
+}
+
+.deck-back-corner .card-back-action {
+  gap: 8px;
+  min-height: 60px;
+  padding: 14px 18px;
+  font-size: 15px;
+}
+
+.deck-back-corner .card-back-action svg {
+  width: 20px;
+  height: 20px;
 }
 
 .question-card {
@@ -2456,6 +2468,11 @@ p {
     line-height: 1.14;
   }
 
+  .home-outcome .section-intro h2 {
+    font-size: clamp(24px, 6.4vw, 28px);
+    line-height: 1.16;
+  }
+
   .home-benefits,
   .domain-explainer-grid,
   .report-preview-grid,
@@ -2465,9 +2482,9 @@ p {
   }
 
   .action-visual {
-    grid-template-rows: auto minmax(330px, 1fr);
+    grid-template-rows: auto auto;
     gap: 10px;
-    min-height: 400px;
+    min-height: auto;
     padding: 12px;
   }
 
@@ -2485,25 +2502,34 @@ p {
   }
 
   .action-route-stage {
-    min-height: 330px;
+    display: grid;
+    gap: 10px;
+    min-height: auto;
+    overflow: visible;
   }
 
   .action-route-svg {
-    top: 78px;
-    height: 220px;
+    position: relative;
+    order: 2;
+    inset: auto;
+    height: 88px;
   }
 
   .action-domain-flow {
-    top: 8px;
-    left: 8px;
-    right: 8px;
+    position: relative;
+    order: 1;
+    top: auto;
+    left: auto;
+    right: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: auto;
     gap: 6px;
   }
 
   .action-domain-token {
-    grid-template-columns: 30px minmax(0, 1fr);
-    min-height: 36px;
+    grid-template-columns: 28px minmax(0, 1fr);
+    min-height: 42px;
     padding: 6px 8px;
   }
 
@@ -2518,11 +2544,16 @@ p {
   }
 
   .action-next-panel {
-    right: 8px;
-    bottom: 12px;
-    width: min(190px, 68%);
-    min-height: 104px;
-    padding: 14px;
+    position: relative;
+    order: 3;
+    right: auto;
+    bottom: auto;
+    width: 100%;
+    min-height: auto;
+    padding: 16px;
+    box-shadow:
+      0 16px 32px rgba(47, 118, 109, 0.22),
+      0 0 0 6px rgba(47, 118, 109, 0.08);
   }
 
   .action-next-panel strong {
@@ -2634,9 +2665,9 @@ p {
   .deck-back-corner .card-back-action {
     justify-content: flex-start;
     width: fit-content;
-    min-height: 34px;
-    padding: 7px 9px;
-    font-size: 11px;
+    min-height: 56px;
+    padding: 12px 16px;
+    font-size: 14px;
   }
 
   .round-panel .compact-map {
