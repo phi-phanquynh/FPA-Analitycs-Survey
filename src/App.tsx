@@ -396,6 +396,26 @@ function App() {
     });
   }
 
+  function backOneCard() {
+    setState((current) => {
+      const roundItems = rounds[current.currentRound] ?? [];
+      if (current.currentCard <= 0) return current;
+
+      const previousCard = current.currentCard - 1;
+      const previousItem = roundItems[previousCard];
+      if (!previousItem) return current;
+
+      return {
+        ...current,
+        currentCard: previousCard,
+        selectedIds: removeId(current.selectedIds, previousItem.id),
+        dismissedIds: removeId(current.dismissedIds, previousItem.id),
+        selectionOrder: removeId(current.selectionOrder, previousItem.id),
+        mode: "deck"
+      };
+    });
+  }
+
   function continueRound() {
     setState((current) => {
       const nextRound = current.currentRound + 1;
@@ -625,6 +645,8 @@ function App() {
             cardIndex={state.currentCard}
             roundCardCount={currentRoundItems.length}
             selectedCount={selectedItems.length}
+            canGoBack={state.currentCard > 0}
+            onBackOneCard={backOneCard}
             onInterested={() => chooseCard(currentItem, true)}
             onDismiss={() => chooseCard(currentItem, false)}
           />
@@ -876,11 +898,13 @@ type DeckScreenProps = {
   cardIndex: number;
   roundCardCount: number;
   selectedCount: number;
+  canGoBack: boolean;
+  onBackOneCard: () => void;
   onInterested: () => void;
   onDismiss: () => void;
 };
 
-function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount, onInterested, onDismiss }: DeckScreenProps) {
+function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount, canGoBack, onBackOneCard, onInterested, onDismiss }: DeckScreenProps) {
   const category = categoryById[item.category];
   const remaining = Math.max(0, roundCardCount - cardIndex - 1);
 
@@ -890,6 +914,10 @@ function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount
         <span>Round {roundIndex + 1}</span>
         <strong>このラウンド {cardIndex + 1}枚目</strong>
         <em>あと{remaining}枚でちょっと休憩</em>
+        <button className="card-back-action" type="button" onClick={onBackOneCard} disabled={!canGoBack}>
+          <ArrowLeft size={15} />
+          1枚戻る
+        </button>
       </div>
 
       <div className="candidate-stack" aria-live="polite">

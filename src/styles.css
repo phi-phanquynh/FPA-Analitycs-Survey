@@ -706,6 +706,29 @@ p {
   line-height: 1.16;
 }
 
+.card-back-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: fit-content;
+  min-height: 34px;
+  margin-top: 10px;
+  padding: 7px 10px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.card-back-action:disabled {
+  color: #9aa3a4;
+  background: rgba(236, 241, 237, 0.7);
+  box-shadow: none;
+}
+
 .candidate-stack {
   grid-column: 3;
   grid-row: 1;
@@ -2782,7 +2805,7 @@ p {
     grid-row: auto;
     height: auto;
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     gap: 10px;
     align-items: center;
   }
@@ -2985,6 +3008,12 @@ p {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
     padding: 10px 12px;
+  }
+
+  .round-panel .card-back-action {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-top: 0;
   }
 
   .round-panel span,
