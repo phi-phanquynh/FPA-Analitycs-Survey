@@ -593,17 +593,25 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
       <section className="home-outcome" aria-labelledby="home-outcome-heading">
         <div className="section-intro">
           <p className="eyebrow">After Visualization</p>
-          <h2 id="home-outcome-heading">見える化のあと、貴社が取り組むべき5つのアクションを提案します</h2>
-          <p>
-            診断結果はスコアで終わらせません。5領域それぞれに対して、基本・応用・AIのどこから手をつけるべきかを整理し、次に進める行動に落とし込みます。
-          </p>
+          <h2 id="home-outcome-heading">5領域から、次の一手へ</h2>
         </div>
-        <div className="outcome-list" aria-label="診断後のアウトプット">
-          <article>
-            <span><Check size={18} /></span>
-            <strong>5領域それぞれに、次の一手を提示</strong>
-            <p>診断結果から優先度を見て、会議・データ・分析・実行へつながる具体的なアクションに落とし込みます。</p>
-          </article>
+        <div className="action-visual" aria-label="5領域から次の一手への流れ">
+          <div className="action-domain-stack">
+            {domains.map((domain, index) => (
+              <span key={domain.id} style={{ "--accent": domain.accent } as CSSProperties}>
+                <i>{String(index + 1).padStart(2, "0")}</i>
+                <strong>{domain.shortName}</strong>
+              </span>
+            ))}
+          </div>
+          <div className="action-flow-arrow" aria-hidden="true">
+            <ArrowRight size={28} />
+          </div>
+          <div className="action-core">
+            <span>Action</span>
+            <strong>次の一手</strong>
+            <em>5</em>
+          </div>
         </div>
       </section>
 
