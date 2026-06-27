@@ -550,87 +550,113 @@ function ProgressQuestMap({
 }
 
 function HomeScreen({ onStart }: { onStart: () => void }) {
+  const actionRoutePath = "M56 192 C144 150 190 172 272 124 C360 72 440 102 566 48";
+
   return (
-    <motion.main className="home-screen" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-      <section className="home-hero">
-        <div className="home-copy">
-          <p className="eyebrow">FP&A Management Diagnosis</p>
-          <h1 className="home-title">
-            <span>経営管理の5領域を、</span>
-            <span>どこまでできているか</span>
-            <span>見える化します</span>
-          </h1>
-          <p>
-            15問に答えるだけで、5領域の現在地と、次に取り組むべき5つのアクションを確認できます。
-          </p>
-          <div className="home-benefits" aria-label="診断で分かること">
-            <span><ClipboardList size={18} /> 5領域の達成度</span>
-            <span><BarChart3 size={18} /> 経営管理の現在地</span>
-            <span><Check size={18} /> 取り組むべき5アクション</span>
+    <>
+      <motion.main className="home-screen" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+        <section className="home-hero">
+          <div className="home-copy">
+            <p className="eyebrow">FP&A Management Diagnosis</p>
+            <h1 className="home-title">
+              <span>経営管理の5領域を、</span>
+              <span>どこまでできているか</span>
+              <span>見える化します</span>
+            </h1>
+            <p>
+              15問に答えるだけで、5領域の現在地と、次に取り組むべき5つのアクションを確認できます。
+            </p>
+            <div className="home-benefits" aria-label="診断で分かること">
+              <span><ClipboardList size={18} /> 5領域の達成度</span>
+              <span><BarChart3 size={18} /> 経営管理の現在地</span>
+              <span><Check size={18} /> 取り組むべき5アクション</span>
+            </div>
           </div>
-        </div>
-      </section>
+          <div className="home-hero-action" aria-label="診断開始">
+            <button className="primary-action home-start-hero" type="button" onClick={onStart}>
+              <span>診断を</span>
+              <strong>始める</strong>
+              <ArrowRight size={24} />
+            </button>
+          </div>
+        </section>
 
-      <section className="home-framework" aria-labelledby="home-framework-heading">
-        <div className="section-intro">
-          <p className="eyebrow">Five Domains</p>
-          <h2 id="home-framework-heading">経営管理の5領域</h2>
-          <p>
-            経営管理を、数字の土台から会議後の実行まで一連の流れとして確認します。どこが整っていて、どこが次の制約になっているかを領域別に見ます。
-          </p>
-        </div>
-        <div className="domain-explainer-grid">
-          {domains.map((domain, index) => (
-            <article className="domain-explainer-card" key={domain.id} style={{ "--accent": domain.accent } as CSSProperties}>
-              <span>{String(index + 1).padStart(2, "0")}</span>
-              <h3>{domain.name}</h3>
-              <p>{domain.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="home-outcome" aria-labelledby="home-outcome-heading">
-        <div className="section-intro">
-          <p className="eyebrow">After Visualization</p>
-          <h2 id="home-outcome-heading">5領域から、次の一手へ</h2>
-        </div>
-        <div className="action-visual" aria-label="5領域から次の一手への流れ">
-          <div className="action-domain-stack">
+        <section className="home-framework" aria-labelledby="home-framework-heading">
+          <div className="section-intro">
+            <p className="eyebrow">Five Domains</p>
+            <h2 id="home-framework-heading">経営管理の5領域</h2>
+            <p>
+              経営管理を、数字の土台から会議後の実行まで一連の流れとして確認します。どこが整っていて、どこが次の制約になっているかを領域別に見ます。
+            </p>
+          </div>
+          <div className="domain-explainer-grid">
             {domains.map((domain, index) => (
-              <span key={domain.id} style={{ "--accent": domain.accent } as CSSProperties}>
-                <i>{String(index + 1).padStart(2, "0")}</i>
-                <strong>{domain.shortName}</strong>
-              </span>
+              <article className="domain-explainer-card" key={domain.id} style={{ "--accent": domain.accent } as CSSProperties}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <h3>{domain.name}</h3>
+                <p>{domain.description}</p>
+              </article>
             ))}
           </div>
-          <div className="action-flow-arrow" aria-hidden="true">
-            <ArrowRight size={28} />
+        </section>
+
+        <section className="home-outcome" aria-labelledby="home-outcome-heading">
+          <div className="section-intro">
+            <p className="eyebrow">After Visualization</p>
+            <h2 id="home-outcome-heading">
+              <span>最後に「どうやって</span>
+              <span>次のレベルにあがるのか」を</span>
+              <span>ご提案します</span>
+            </h2>
           </div>
-          <div className="action-core">
-            <span>Action</span>
-            <strong>次の一手</strong>
-            <em>5</em>
+          <div className="action-visual" aria-label="診断結果から次のレベルへの改善ルート">
+            <div className="action-visual-head">
+              <span>Diagnosis to roadmap</span>
+              <strong>Level up route</strong>
+            </div>
+            <div className="action-route-stage">
+              <svg className="action-route-svg" viewBox="0 0 640 260" role="img" aria-label="5領域の診断結果が次のレベルへの改善ルートに変わる図">
+                <defs>
+                  <linearGradient id="action-route-gradient" x1="56" y1="192" x2="566" y2="48" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#2f766d" />
+                    <stop offset="0.48" stopColor="#4e6e94" />
+                    <stop offset="1" stopColor="#c7922d" />
+                  </linearGradient>
+                </defs>
+                <path className="action-route-base" d={actionRoutePath} />
+                <path className="action-route-active" d={actionRoutePath} />
+                <circle className="action-route-node is-start" cx="56" cy="192" r="7" />
+                <circle className="action-route-node" cx="272" cy="124" r="7" />
+                <circle className="action-route-node is-end" cx="566" cy="48" r="7" />
+                <circle className="action-route-pulse" r="8">
+                  <animateMotion dur="4.8s" repeatCount="indefinite" path={actionRoutePath} />
+                </circle>
+              </svg>
+              <div className="action-domain-flow" aria-label="診断する5領域">
+                {domains.map((domain, index) => (
+                  <span className="action-domain-token" key={domain.id} style={{ "--accent": domain.accent, "--delay": `${index * 0.16}s` } as CSSProperties}>
+                    <i>{String(index + 1).padStart(2, "0")}</i>
+                    <strong>{domain.shortName}</strong>
+                  </span>
+                ))}
+              </div>
+              <div className="action-next-panel">
+                <span>Next level</span>
+                <strong>優先順位つき<br />改善プラン</strong>
+                <em>基本 → 応用 → AI</em>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      </motion.main>
 
       <section className="home-bottom-cta" aria-label="診断開始">
-        <motion.div
-          className="floating-cta-hint"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.24, duration: 0.4, ease: "easeOut" }}
-        >
-          <Sparkles size={16} />
-          <span>下の丸いボタンから診断を始められます</span>
-        </motion.div>
         <button className="primary-action home-start-final" type="button" onClick={onStart}>
           診断を始める
           <ArrowRight size={19} />
         </button>
       </section>
-    </motion.main>
+    </>
   );
 }
 
