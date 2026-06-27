@@ -1,419 +1,239 @@
+import { actionCopy, answerOptionByValue, diagnosticQuestions, diagnosticRounds, domainById, domains, roundByKey } from "./data";
 import type {
-  AnalyticsItem,
-  Category,
-  CategoryDiagnosis,
+  AnswerValue,
+  CompletedDiagnosis,
   DiagnosisResult,
-  DiagnosisSignal,
-  MaturityLevel,
+  DomainDiagnosis,
+  ManagementDomainId,
   MaturityStage,
-  MaturityStageKey
+  MaturityStageKey,
+  ProgressSummary,
+  RecommendedAction,
+  RoundLevelKey
 } from "./types";
 
-const CARD_SCORE_MAX = 70;
-const QUESTIONNAIRE_SCORE_MAX = 30;
-const CARDS_PER_CATEGORY = 3;
+const ROUND_MAX_SCORE = 10;
+const DOMAIN_MAX_SCORE = 6;
+const ROUND_READY_SCORE = 8;
+const LEVEL_READY_SCORE = 2;
+const ANSWER_MAX_SCORE = 2;
 
-type QuestionnaireSignalDefinition = {
-  categories: string[];
-  weight: number;
-  reason: string;
-};
+const roundOrder: RoundLevelKey[] = ["basic", "applied", "ai"];
+const roundPriority: Record<RoundLevelKey, number> = { basic: 3, applied: 2, ai: 1 };
 
-type BuildDiagnosisArgs = {
-  selectedItems: AnalyticsItem[];
-  answers: Record<string, string[]>;
-  categories: Category[];
-};
-
-const questionnaireSignals: Record<string, QuestionnaireSignalDefinition> = {
-  "売上": { categories: ["growth", "performance"], weight: 6, reason: "売上説明に時間がかかる" },
-  "粗利": { categories: ["profitability", "growth"], weight: 6, reason: "粗利説明に時間がかかる" },
-  "営業利益": { categories: ["profitability", "performance"], weight: 6, reason: "営業利益説明に時間がかかる" },
-  "費用": { categories: ["cost", "performance"], weight: 6, reason: "費用説明に時間がかかる" },
-  "キャッシュ": { categories: ["cash", "forecast"], weight: 7, reason: "キャッシュ説明に時間がかかる" },
-  "在庫": { categories: ["cash", "cost"], weight: 6, reason: "在庫説明に時間がかかる" },
-  "予算差異": { categories: ["performance", "forecast"], weight: 7, reason: "予算差異で議論が止まりやすい" },
-  "利益率低下": { categories: ["profitability"], weight: 8, reason: "利益率低下の原因特定が必要" },
-  "売上未達": { categories: ["growth", "forecast"], weight: 7, reason: "売上未達の原因特定が必要" },
-  "コスト増": { categories: ["cost"], weight: 8, reason: "コスト増の原因特定が必要" },
-  "回収遅延": { categories: ["cash", "risk"], weight: 7, reason: "回収遅延が資金繰りに影響する" },
-  "予測外れ": { categories: ["forecast", "scenario"], weight: 8, reason: "予測精度の改善が必要" },
-  "売上着地": { categories: ["forecast", "growth"], weight: 7, reason: "売上着地を早く見たい" },
-  "利益着地": { categories: ["forecast", "profitability"], weight: 7, reason: "利益着地を早く見たい" },
-  "資金残高": { categories: ["cash", "forecast"], weight: 8, reason: "資金残高の先読みが必要" },
-  "需要": { categories: ["scenario", "growth"], weight: 6, reason: "需要変動の見通しが必要" },
-  "解約": { categories: ["growth", "risk"], weight: 6, reason: "解約リスクの把握が必要" },
-  "費用超過": { categories: ["cost", "risk"], weight: 7, reason: "費用超過の予兆把握が必要" },
-  "事業": { categories: ["profitability", "allocation"], weight: 4, reason: "事業軸で分析したい" },
-  "部門": { categories: ["performance", "cost"], weight: 4, reason: "部門軸で分析したい" },
-  "商品": { categories: ["growth", "profitability"], weight: 4, reason: "商品軸で分析したい" },
-  "顧客": { categories: ["growth", "profitability", "risk"], weight: 4, reason: "顧客軸で分析したい" },
-  "地域": { categories: ["growth", "scenario"], weight: 4, reason: "地域軸で分析したい" },
-  "担当者": { categories: ["performance", "allocation"], weight: 4, reason: "担当者軸で分析したい" },
-  "月次業績": { categories: ["performance", "story"], weight: 6, reason: "月次業績資料を改善したい" },
-  "予算レビュー": { categories: ["forecast", "performance"], weight: 6, reason: "予算レビューを改善したい" },
-  "投資審査": { categories: ["allocation"], weight: 7, reason: "投資審査を改善したい" },
-  "資金繰り": { categories: ["cash"], weight: 8, reason: "資金繰り資料を改善したい" },
-  "取締役会": { categories: ["story", "performance"], weight: 5, reason: "取締役会資料を改善したい" },
-  "部門会議": { categories: ["performance", "cost"], weight: 5, reason: "部門会議資料を改善したい" },
-  "顧客別利益": { categories: ["profitability", "growth"], weight: 7, reason: "顧客別利益データが不足している" },
-  "商品別原価": { categories: ["profitability", "cost"], weight: 7, reason: "商品別原価データが不足している" },
-  "商談情報": { categories: ["growth", "forecast"], weight: 7, reason: "商談情報が不足している" },
-  "在庫明細": { categories: ["cash", "cost"], weight: 7, reason: "在庫明細が不足している" },
-  "人員情報": { categories: ["allocation", "cost"], weight: 6, reason: "人員情報が不足している" },
-  "施策効果": { categories: ["allocation", "story"], weight: 6, reason: "施策効果データが不足している" },
-  "CEO": { categories: ["story", "performance"], weight: 4, reason: "CEO向けの判断材料が必要" },
-  "CFO": { categories: ["performance", "forecast", "cash"], weight: 4, reason: "CFO向けの判断材料が必要" },
-  "事業責任者": { categories: ["profitability", "growth"], weight: 4, reason: "事業責任者向けの判断材料が必要" },
-  "営業責任者": { categories: ["growth", "forecast"], weight: 4, reason: "営業責任者向けの判断材料が必要" },
-  "部門長": { categories: ["performance", "cost"], weight: 4, reason: "部門長向けの判断材料が必要" },
-  "経営会議": { categories: ["performance", "story"], weight: 4, reason: "経営会議向けの判断材料が必要" },
-  "価格改定": { categories: ["profitability", "growth"], weight: 7, reason: "価格改定に使う分析が必要" },
-  "費用削減": { categories: ["cost"], weight: 8, reason: "費用削減に使う分析が必要" },
-  "投資判断": { categories: ["allocation"], weight: 8, reason: "投資判断に使う分析が必要" },
-  "人員再配置": { categories: ["allocation", "cost"], weight: 7, reason: "人員再配置に使う分析が必要" },
-  "在庫削減": { categories: ["cash", "cost"], weight: 7, reason: "在庫削減に使う分析が必要" },
-  "営業支援": { categories: ["growth", "forecast"], weight: 6, reason: "営業支援に使う分析が必要" }
-};
-
-const firstActions: Record<string, string> = {
-  performance: "経営会議で見るKPI、閾値、責任部門を1枚に整理する",
-  growth: "売上の増減を顧客・商品・単価・数量に分解して、重点営業テーマを決める",
-  profitability: "商品・顧客・事業別の採算を並べ、利益を下げる要因を特定する",
-  cost: "費用の大きな塊と増加要因を部門・科目別に切り分ける",
-  cash: "13週から12か月の資金見通しと、回収・在庫の資金拘束を確認する",
-  forecast: "実績、予算、最新見込を接続し、着地見込と差異理由を更新する",
-  scenario: "主要ドライバーの変動幅を決め、利益と資金への影響をケース比較する",
-  allocation: "投資・人員・予算配分を効果、収益性、リスクで比較する",
-  risk: "予算超過、収益悪化、集中リスクの早期アラート条件を決める",
-  story: "差異理由、論点、打ち手を経営会議向けの説明文に変換する"
-};
-
-const pocThemes: Record<string, string> = {
-  performance: "経営KPI統合ダッシュボード",
-  growth: "売上増減要因とパイプライン分析",
-  profitability: "利益ブリッジとセグメント別採算分析",
-  cost: "費用構造マップとコストドライバー分析",
-  cash: "13週キャッシュフロー予測と運転資本分析",
-  forecast: "ローリング・着地見込フォーキャスト",
-  scenario: "ベスト・ベース・ワーストケース分析",
-  allocation: "投資対効果と資本配分ポートフォリオ",
-  risk: "財務KPIリスクヒートマップ",
-  story: "月次業績コメント自動生成"
-};
-
-const categoryCheckTemplates: Record<string, string> = {
-  performance: "KPI定義、閾値、責任部門、会議での利用タイミング",
-  growth: "顧客・商品・商談データ、単価/数量、解約や受注確度の定義",
-  profitability: "原価、粗利、配賦ルール、顧客別対応コスト",
-  cost: "部門費、勘定科目、発注残、固定費/変動費区分",
-  cash: "入出金予定、回収条件、在庫明細、借入枠",
-  forecast: "予算、実績、見込、ドライバー、更新頻度",
-  scenario: "為替、原材料、人件費、需要などの前提レンジ",
-  allocation: "投資案件、人員計画、効果見込、回収期間",
-  risk: "閾値、異常値、集中先、アラート時の対応責任",
-  story: "会議体、読み手、説明粒度、差異コメントの作成プロセス"
-};
-
-export function maturityStageFromIssueScore(issueScore: number): MaturityStage {
-  if (issueScore <= 14) {
-    return {
-      key: "advanced",
-      label: "先進",
-      range: "0-14",
-      summary: "主要な分析は比較的整っており、次は自動化や意思決定への接続を高める段階です。",
-      actionTone: "維持・高度化"
-    };
-  }
-  if (issueScore <= 54) {
-    return {
-      key: "standard",
-      label: "標準",
-      range: "15-54",
-      summary: "一定の分析はありますが、粒度、更新頻度、会議での使い方に整備余地があります。",
-      actionTone: "改善余地"
-    };
-  }
-  return {
+const maturityStages: Record<MaturityStageKey, MaturityStage> = {
+  immature: {
     key: "immature",
     label: "未熟",
-    range: "55-100",
-    summary: "経営判断に必要な分析が不足している可能性が高く、優先テーマを絞って整備する段階です。",
-    actionTone: "優先整備"
-  };
+    summary: "経営管理の基本となる数字の揃え方、差の説明、会議での使い方を先に整える段階です。",
+    actionTone: "土台整備"
+  },
+  standard: {
+    key: "standard",
+    label: "標準",
+    summary: "基本は回り始めています。次は数字を現場の動きや見通し、打ち手の比較へつなげる段階です。",
+    actionTone: "応用強化"
+  },
+  advanced: {
+    key: "advanced",
+    label: "高度",
+    summary: "応用まで進んでいます。次はAIや自動化で、検知、下書き、提案の範囲を広げる段階です。",
+    actionTone: "AI化余地"
+  },
+  frontier: {
+    key: "frontier",
+    label: "先端",
+    summary: "基本、応用、AI活用まで一通り整っています。次は横展開と継続的な精度改善の段階です。",
+    actionTone: "横展開"
+  }
+};
+
+function scoreOf(answer: AnswerValue | undefined) {
+  return answer ? answerOptionByValue[answer].score : 0;
 }
 
-export function pendingMaturityStage(): MaturityStage {
+function isLevelReady(score: number) {
+  return score >= LEVEL_READY_SCORE;
+}
+
+function stageFromRoundScores(scores: Record<RoundLevelKey, number>) {
+  if (scores.basic < ROUND_READY_SCORE) return maturityStages.immature;
+  if (scores.applied < ROUND_READY_SCORE) return maturityStages.standard;
+  if (scores.ai < ROUND_READY_SCORE) return maturityStages.advanced;
+  return maturityStages.frontier;
+}
+
+function stageFromDomainScores(scores: Record<RoundLevelKey, number>) {
+  if (!isLevelReady(scores.basic)) return maturityStages.immature;
+  if (!isLevelReady(scores.applied)) return maturityStages.standard;
+  if (!isLevelReady(scores.ai)) return maturityStages.advanced;
+  return maturityStages.frontier;
+}
+
+function getAnsweredCount(answers: Record<string, AnswerValue>) {
+  return diagnosticQuestions.filter((question) => answers[question.id]).length;
+}
+
+function firstMissingQuestionId(answers: Record<string, AnswerValue>) {
+  return diagnosticQuestions.find((question) => !answers[question.id])?.id ?? null;
+}
+
+function roundScore(answers: Record<string, AnswerValue>, round: RoundLevelKey) {
+  const questions = diagnosticQuestions.filter((question) => question.round === round);
+  return questions.reduce((sum, question) => sum + scoreOf(answers[question.id]), 0);
+}
+
+function roundAnsweredCount(answers: Record<string, AnswerValue>, round: RoundLevelKey) {
+  return diagnosticQuestions.filter((question) => question.round === round && answers[question.id]).length;
+}
+
+export function buildProgressSummary(answers: Record<string, AnswerValue>): ProgressSummary {
+  const answeredCount = getAnsweredCount(answers);
   return {
-    key: "pending",
-    label: "判定保留",
-    range: "-",
-    summary: "入力が少ないため、現時点では成熟度を確定せず、参考診断として扱います。",
-    actionTone: "入力追加"
+    answeredCount,
+    totalQuestions: diagnosticQuestions.length,
+    missingCount: diagnosticQuestions.length - answeredCount,
+    nextQuestionId: firstMissingQuestionId(answers),
+    roundDiagnostics: diagnosticRounds.map((round) => ({
+      round: round.key,
+      label: round.label,
+      score: roundScore(answers, round.key),
+      maxScore: ROUND_MAX_SCORE,
+      answeredCount: roundAnsweredCount(answers, round.key)
+    }))
   };
 }
 
-export function maturityFromIssueScore(issueScore: number): MaturityLevel {
-  if (issueScore <= 14) {
-    return {
-      level: 5,
-      label: "運用高度化",
-      range: "0-14",
-      summary: "主要な分析は運用されており、次は自動化や意思決定への接続を高める段階です。"
-    };
-  }
-  if (issueScore <= 34) {
-    return {
-      level: 4,
-      label: "意思決定接続",
-      range: "15-34",
-      summary: "分析の土台はあり、会議体や打ち手との接続を強める段階です。"
-    };
-  }
-  if (issueScore <= 54) {
-    return {
-      level: 3,
-      label: "分析整備中",
-      range: "35-54",
-      summary: "分析テーマは見えていますが、粒度、責任、更新頻度の整備余地があります。"
-    };
-  }
-  if (issueScore <= 74) {
-    return {
-      level: 2,
-      label: "可視化不足",
-      range: "55-74",
-      summary: "経営判断に必要な可視化が不足しており、優先テーマを絞った整備が必要です。"
-    };
-  }
-  return {
-    level: 1,
-    label: "未整備・要着手",
-    range: "75-100",
-    summary: "重要な分析が未整備の可能性が高く、まずは会議で使う最小構成から着手すべき段階です。"
-  };
+function domainScores(answers: Record<string, AnswerValue>, domainId: ManagementDomainId) {
+  return roundOrder.reduce((scores, round) => {
+    const question = diagnosticQuestions.find((item) => item.domainId === domainId && item.round === round);
+    scores[round] = scoreOf(question ? answers[question.id] : undefined);
+    return scores;
+  }, {} as Record<RoundLevelKey, number>);
 }
 
-function unique<T>(items: T[]) {
-  return Array.from(new Set(items));
-}
-
-function flattenAnswers(answers: Record<string, string[]>) {
-  return Object.values(answers).flat().map((answer) => answer.trim()).filter(Boolean);
-}
-
-function questionnaireScoreByCategory(answerValues: string[], categories: Category[]) {
-  const categoryScores = Object.fromEntries(categories.map((category) => [category.id, 0])) as Record<string, number>;
-  const categorySignals = Object.fromEntries(categories.map((category) => [category.id, [] as DiagnosisSignal[]])) as Record<string, DiagnosisSignal[]>;
-  const uncertaintySignals: DiagnosisSignal[] = [];
-
-  answerValues.forEach((answer) => {
-    if (answer === "分からない") {
-      uncertaintySignals.push({
-        source: "uncertainty",
-        label: answer,
-        categories: [],
-        weight: 0,
-        reason: "現状把握や判断責任が曖昧な可能性があります。"
-      });
-      return;
-    }
-
-    const definition = questionnaireSignals[answer];
-    if (!definition) return;
-
-    definition.categories.forEach((categoryId) => {
-      if (!(categoryId in categoryScores)) return;
-      categoryScores[categoryId] += definition.weight;
-      categorySignals[categoryId].push({
-        source: "questionnaire",
-        label: answer,
-        categories: definition.categories,
-        weight: definition.weight,
-        reason: definition.reason
-      });
-    });
+function buildDomainDiagnostics(answers: Record<string, AnswerValue>): DomainDiagnosis[] {
+  return domains.map((domain) => {
+    const scores = domainScores(answers, domain.id);
+    const totalScore = scores.basic + scores.applied + scores.ai;
+    return {
+      domainId: domain.id,
+      domainName: domain.name,
+      shortName: domain.shortName,
+      accent: domain.accent,
+      totalScore,
+      maxScore: DOMAIN_MAX_SCORE,
+      basicScore: scores.basic,
+      appliedScore: scores.applied,
+      aiScore: scores.ai,
+      maturityStage: stageFromDomainScores(scores)
+    };
   });
-
-  Object.keys(categoryScores).forEach((categoryId) => {
-    categoryScores[categoryId] = Math.min(QUESTIONNAIRE_SCORE_MAX, categoryScores[categoryId]);
-  });
-
-  return { categoryScores, categorySignals, uncertaintySignals };
 }
 
-function categoryReason(selectedCount: number, questionnaireScore: number, categoryName: string) {
-  if (selectedCount > 0 && questionnaireScore > 0) {
-    return `課題ありカードが${selectedCount}件あり、質問票でも${categoryName}に関連する論点が出ています。`;
-  }
-  if (selectedCount > 0) {
-    return `課題ありカードが${selectedCount}件あり、まず${categoryName}から確認する価値があります。`;
-  }
-  if (questionnaireScore > 0) {
-    return `カード選択は少ないものの、質問票の回答から${categoryName}に関連する論点が見えます。`;
-  }
-  return `現時点の入力では、${categoryName}は優先整備領域としては比較的低めです。`;
+function selectBottleneckRound(scores: Record<RoundLevelKey, number>): RoundLevelKey | "maintain" {
+  const candidates = roundOrder
+    .filter((round) => scores[round] < ANSWER_MAX_SCORE)
+    .map((round) => ({
+      round,
+      severity: (ANSWER_MAX_SCORE - scores[round]) * roundPriority[round],
+      order: roundOrder.indexOf(round)
+    }))
+    .sort((a, b) => b.severity - a.severity || a.order - b.order);
+
+  return candidates[0]?.round ?? "maintain";
 }
 
-function recommendedActionForStage(stage: MaturityStage, categoryId: string) {
-  const firstAction = firstActions[categoryId] ?? "診断根拠、必要データ、責任者を確認する";
-
-  if (stage.key === "advanced") {
-    return `${firstAction}。あわせて、更新の自動化と会議でのアクション管理までつなげる。`;
-  }
-  if (stage.key === "standard") {
-    return `${firstAction}。まずは粒度、責任者、更新頻度をそろえ、月次で使える形にする。`;
-  }
-  if (stage.key === "pending") {
-    return "課題カードと質問票の回答を追加し、診断に使う根拠を増やす。";
-  }
-
-  return `${firstAction}。最初は対象範囲を絞り、1つの会議で使える最小構成から始める。`;
+function actionReason(round: RoundLevelKey | "maintain", answerValue?: AnswerValue) {
+  if (round === "maintain") return "全ラウンドで大きな詰まりは見えないため、維持と横展開を優先します。";
+  if (answerValue === "none") return `${roundByKey[round].label}が未実施のため、この段階から整えるのが最短です。`;
+  if (answerValue === "partial") return `${roundByKey[round].label}は一部できていますが、手直しや確認が残るため、会議前にそのまま使える状態へ近づけます。`;
+  return `${roundByKey[round].label}は大きな詰まりではありません。維持、横展開、継続的な精度改善を進めます。`;
 }
 
-function nextCheckForStage(stage: MaturityStage, categoryId: string) {
-  const checkTemplate = categoryCheckTemplates[categoryId] ?? "必要データ、責任者、更新頻度";
-
-  if (stage.key === "advanced") {
-    return `${checkTemplate}に加えて、意思決定後のアクション追跡まで確認する`;
-  }
-  if (stage.key === "standard") {
-    return `${checkTemplate}を確認し、会議で使える粒度にそろえる`;
-  }
-  if (stage.key === "pending") {
-    return "この領域に関する課題カード、会議体、利用データを追加で確認する";
-  }
-
-  return `${checkTemplate}の所在を確認し、まず使えるデータから着手する`;
-}
-
-function buildStageCounts(categoryDiagnostics: CategoryDiagnosis[]) {
-  return categoryDiagnostics.reduce(
-    (counts, category) => ({
-      ...counts,
-      [category.maturityStage.key]: counts[category.maturityStage.key] + 1
-    }),
-    { immature: 0, standard: 0, advanced: 0, pending: 0 } satisfies Record<MaturityStageKey, number>
-  );
-}
-
-function buildEvidence(selectedItems: AnalyticsItem[], answerValues: string[], uncertaintyCount: number) {
-  const evidence = [
-    `課題ありカード: ${selectedItems.length}件`,
-    `質問票の選択: ${answerValues.length}件`
-  ];
-
-  if (uncertaintyCount > 0) {
-    evidence.push(`「分からない」回答: ${uncertaintyCount}件`);
-  }
-
-  const selectedCategoryNames = unique(selectedItems.map((item) => item.category));
-  if (selectedCategoryNames.length > 0) {
-    evidence.push(`課題カテゴリ数: ${selectedCategoryNames.length}カテゴリ`);
-  }
-
-  return evidence;
-}
-
-function buildNextChecks(topCategories: CategoryDiagnosis[], uncertaintyCount: number, isInsufficient: boolean) {
-  if (isInsufficient) {
-    return [
-      "課題ありカードを最低3枚程度選び、診断の根拠を増やす",
-      "どの会議体で使う診断なのかを確認する",
-      "最終判断者と、現状で困っている資料を確認する",
-      "利用可能なデータの所在と更新頻度を確認する"
-    ];
-  }
-
-  const categoryChecks = topCategories
-    .slice(0, 3)
-    .map((category) => `${category.categoryName}: ${categoryCheckTemplates[category.categoryId] ?? "必要データ、責任者、更新頻度"}`);
-
-  return [
-    ...categoryChecks,
-    "PoCで使う会議体と意思決定者を決める",
-    "初回に見る指標、粒度、更新頻度を決める",
-    uncertaintyCount >= 3 ? "「分からない」回答が多いため、現状把握と責任範囲を先に確認する" : "診断結果を関係部門と確認し、優先テーマを1-3件に絞る"
-  ];
-}
-
-export function buildDiagnosis({ selectedItems, answers, categories }: BuildDiagnosisArgs): DiagnosisResult {
-  const answerValues = flattenAnswers(answers);
-  const meaningfulAnswerCount = answerValues.filter((answer) => answer !== "分からない").length;
-  const { categoryScores, categorySignals, uncertaintySignals } = questionnaireScoreByCategory(answerValues, categories);
-  const uncertaintyCount = uncertaintySignals.length;
-  const isInsufficient = selectedItems.length === 0 && (meaningfulAnswerCount < 2 || uncertaintyCount >= 4);
-
-  const categoryDiagnostics = categories
-    .map((category) => {
-      const selectedForCategory = selectedItems.filter((item) => item.category === category.id);
-      const selectedCount = selectedForCategory.length;
-      const cardScore = Math.min(CARD_SCORE_MAX, Math.round((selectedCount / CARDS_PER_CATEGORY) * CARD_SCORE_MAX));
-      const questionnaireScore = categoryScores[category.id] ?? 0;
-      const issueScore = Math.min(100, cardScore + questionnaireScore);
-      const maturityStage = isInsufficient ? pendingMaturityStage() : maturityStageFromIssueScore(issueScore);
-      const cardSignals = selectedForCategory.map<DiagnosisSignal>((item) => ({
-        source: "card",
-        label: item.title,
-        categories: [category.id],
-        weight: 14,
-        reason: item.capability
-      }));
+function buildRecommendedActions(answers: Record<string, AnswerValue>, domainDiagnostics: DomainDiagnosis[]): RecommendedAction[] {
+  const actions = domainDiagnostics
+    .map((diagnosis) => {
+      const scores = {
+        basic: diagnosis.basicScore,
+        applied: diagnosis.appliedScore,
+        ai: diagnosis.aiScore
+      };
+      const round = selectBottleneckRound(scores);
+      const domain = domainById[diagnosis.domainId];
+      const question = round === "maintain"
+        ? undefined
+        : diagnosticQuestions.find((item) => item.domainId === diagnosis.domainId && item.round === round);
+      const answerValue = question ? answers[question.id] : undefined;
+      const copy = actionCopy[diagnosis.domainId][round];
+      const severity = round === "maintain" ? 0 : (ANSWER_MAX_SCORE - scores[round]) * roundPriority[round];
 
       return {
-        categoryId: category.id,
-        categoryName: category.name,
-        categoryDescription: category.description,
-        issueScore,
-        cardScore,
-        questionnaireScore,
-        selectedCount,
-        selectedTitles: selectedForCategory.map((item) => item.title),
-        maturity: maturityFromIssueScore(issueScore),
-        maturityStage,
-        signals: [...cardSignals, ...(categorySignals[category.id] ?? [])],
-        reason: categoryReason(selectedCount, questionnaireScore, category.name),
-        firstAction: firstActions[category.id] ?? "診断根拠、必要データ、責任者を確認する",
-        recommendedAction: recommendedActionForStage(maturityStage, category.id),
-        nextCheck: nextCheckForStage(maturityStage, category.id),
-        pocTheme: pocThemes[category.id] ?? category.poc
-      } satisfies CategoryDiagnosis;
+        domainId: diagnosis.domainId,
+        domainName: diagnosis.domainName,
+        accent: domain.accent,
+        priority: 0,
+        round,
+        title: copy.title,
+        action: copy.action,
+        reason: actionReason(round, answerValue),
+        answerValue,
+        severity
+      };
     })
-    .sort((a, b) => b.issueScore - a.issueScore || b.selectedCount - a.selectedCount || categories.findIndex((category) => category.id === a.categoryId) - categories.findIndex((category) => category.id === b.categoryId));
+    .sort((a, b) => b.severity - a.severity || domains.findIndex((domain) => domain.id === a.domainId) - domains.findIndex((domain) => domain.id === b.domainId))
+    .map(({ severity: _severity, ...action }, index) => ({ ...action, priority: index + 1 }));
 
-  const topCategories = categoryDiagnostics.slice(0, 3);
-  const topScoreAverage = topCategories.length
-    ? Math.round(topCategories.reduce((sum, category) => sum + category.issueScore, 0) / topCategories.length)
-    : 0;
-  const overallMaturity = isInsufficient
-    ? {
-        level: 1,
-        label: "入力不足",
-        range: "-",
-        summary: "課題ありカードまたは具体的な質問票回答が不足しているため、診断は初期仮説に留めます。"
-      } satisfies MaturityLevel
-    : maturityFromIssueScore(topScoreAverage);
-  const overallStage = isInsufficient ? pendingMaturityStage() : maturityStageFromIssueScore(topScoreAverage);
-  const stageCounts = isInsufficient
-    ? { immature: 0, standard: 0, advanced: 0, pending: categories.length } satisfies Record<MaturityStageKey, number>
-    : buildStageCounts(categoryDiagnostics);
+  return actions;
+}
 
-  const summary = isInsufficient
-    ? "入力が少ないため、現時点では参考診断です。まず課題ありカードと利用データを確認してください。"
-    : `総合判定は「${overallStage.label}」です。優先して整える領域は${topCategories.map((category) => category.categoryName).join("、")}です。${overallStage.summary}`;
+function buildEvidence(diagnosis: CompletedDiagnosis) {
+  const basic = diagnosis.roundDiagnostics.find((round) => round.round === "basic")?.score ?? 0;
+  const applied = diagnosis.roundDiagnostics.find((round) => round.round === "applied")?.score ?? 0;
+  const ai = diagnosis.roundDiagnostics.find((round) => round.round === "ai")?.score ?? 0;
+
+  return [
+    `15問すべてに回答済み`,
+    `基本 ${basic}/${ROUND_MAX_SCORE}、応用 ${applied}/${ROUND_MAX_SCORE}、AI ${ai}/${ROUND_MAX_SCORE}`,
+    `5領域それぞれに、次に取り組むべきアクションを1つずつ提示`
+  ];
+}
+
+export function buildDiagnosis(answers: Record<string, AnswerValue>): DiagnosisResult {
+  const progress = buildProgressSummary(answers);
+  if (progress.missingCount > 0) {
+    return {
+      status: "incomplete",
+      ...progress
+    };
+  }
+
+  const roundScores = roundOrder.reduce((scores, round) => {
+    scores[round] = roundScore(answers, round);
+    return scores;
+  }, {} as Record<RoundLevelKey, number>);
+  const overallStage = stageFromRoundScores(roundScores);
+  const domainDiagnostics = buildDomainDiagnostics(answers);
+  const recommendedActions = buildRecommendedActions(answers, domainDiagnostics);
+
+  const result: CompletedDiagnosis = {
+    status: "diagnosed",
+    ...progress,
+    overallStage,
+    summary: overallStage.summary,
+    evidence: [],
+    domainDiagnostics,
+    recommendedActions
+  };
 
   return {
-    status: isInsufficient ? "insufficient" : "diagnosed",
-    overallIssueScore: isInsufficient ? 0 : topScoreAverage,
-    overallMaturity,
-    overallStage,
-    summary,
-    evidence: buildEvidence(selectedItems, answerValues, uncertaintyCount),
-    topCategories,
-    categoryDiagnostics,
-    stageCounts,
-    uncertaintySignals,
-    nextChecks: buildNextChecks(topCategories, uncertaintyCount, isInsufficient),
-    isPocReferenceOnly: isInsufficient || selectedItems.length === 0
+    ...result,
+    evidence: buildEvidence(result)
   };
+}
+
+export function getNextQuestionIndex(answers: Record<string, AnswerValue>) {
+  const missingId = firstMissingQuestionId(answers);
+  if (!missingId) return diagnosticQuestions.length - 1;
+  return Math.max(0, diagnosticQuestions.findIndex((question) => question.id === missingId));
 }

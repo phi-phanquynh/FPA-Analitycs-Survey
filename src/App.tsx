@@ -2,47 +2,49 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
   ArrowRight,
+  BarChart3,
   Check,
   ClipboardList,
   ExternalLink,
-  Eye,
-  Layers3,
-  ListChecks,
+  LockKeyhole,
   Mail,
   RotateCcw,
   Send,
-  Sparkles,
-  Target,
-  ThumbsUp,
-  TriangleAlert,
+  Sparkles
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { chartName, chartSvg } from "./chart";
-import { analytics, categories, questionnaire } from "./data";
-import { buildDiagnosis } from "./diagnosis";
-import type { AnalyticsItem, AppMode, Category, DiagnosisResult, LeadForm, MaturityStageKey, SubmissionPayload } from "./types";
+import type { CSSProperties, FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { QuestionIllustration } from "./QuestionIllustration";
+import { answerOptions, diagnosticQuestions, diagnosticRounds, domainById, domains, roundByKey } from "./data";
+import { buildDiagnosis, buildProgressSummary, getNextQuestionIndex } from "./diagnosis";
+import type {
+  AnswerValue,
+  AppMode,
+  CompletedDiagnosis,
+  DiagnosticQuestion,
+  LeadForm,
+  MaturityStageKey,
+  RoundLevelKey,
+  SubmissionPayload
+} from "./types";
 
-const STORAGE_KEY = "fpa-analytics-quest-state-v2";
+const STORAGE_KEY = "fpa-analytics-quest-state-v4";
 const FORMSPREE_ENDPOINT = import.meta.env.VITE_FORMSPREE_ENDPOINT as string | undefined;
 const SUBMISSION_RECIPIENT_EMAIL = "pphanquynh@tohmatsu.co.jp";
 const ANALYTICS_CATALOG_URL = "https://dtcon-eto.com/analytics-catalog/";
 
-function scrollToPageTop() {
-  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-}
-
 type SavedState = {
   mode: AppMode;
-  currentRound: number;
-  currentCard: number;
-  selectedIds: string[];
-  dismissedIds: string[];
-  selectionOrder: string[];
-  answers: Record<string, string[]>;
-  otherAnswers: Record<string, string>;
+  currentQuestionIndex: number;
+  answers: Record<string, AnswerValue>;
   lead: LeadForm;
-  detailId: string | null;
   submittedAt: string | null;
+};
+
+type AnswerFeedback = {
+  id: number;
+  label: string;
+  message: string;
 };
 
 const emptyLead: LeadForm = {
@@ -52,254 +54,158 @@ const emptyLead: LeadForm = {
   email: ""
 };
 
-const categoryById = Object.fromEntries(categories.map((category) => [category.id, category])) as Record<string, Category>;
-const analyticsById = Object.fromEntries(analytics.map((item) => [item.id, item])) as Record<string, AnalyticsItem>;
+const activeModes: AppMode[] = ["home", "deck", "roundBreak", "leadGate", "result"];
+const validAnswerValues = new Set(answerOptions.map((option) => option.value));
 
-const starterCandidateIds = ["kpi-command-center", "rolling-landing-forecast", "cashflow-forecast"];
+const stageClassMap: Record<MaturityStageKey, string> = {
+  immature: "stage-immature",
+  standard: "stage-standard",
+  advanced: "stage-advanced",
+  frontier: "stage-frontier"
+};
 
-function rotate<T>(items: T[], offset: number) {
-  return items.map((_, index) => items[(index + offset) % items.length]);
+const managementLevelNames: Record<MaturityStageKey, string> = {
+  immature: "基礎整備段階",
+  standard: "標準運用段階",
+  advanced: "高度運用段階",
+  frontier: "先端活用段階"
+};
+
+const managementLevelShortNames: Record<MaturityStageKey, string> = {
+  immature: "基礎整備",
+  standard: "標準運用",
+  advanced: "高度運用",
+  frontier: "先端活用"
+};
+
+const roundExperienceLabels: Record<RoundLevelKey, string> = {
+  basic: "土台を整える",
+  applied: "判断に使う",
+  ai: "先回りする"
+};
+
+function managementLevelName(stageKey: MaturityStageKey) {
+  return managementLevelNames[stageKey];
 }
 
-function buildRounds() {
-  const grouped = categories.map((category) => analytics.filter((item) => item.category === category.id));
-  const roundCount = Math.max(...grouped.map((items) => items.length));
-
-  return Array.from({ length: roundCount }, (_, roundIndex) => {
-    const rotatedCategories = rotate(categories, roundIndex * 3);
-    return rotatedCategories
-      .map((category) => analytics.filter((item) => item.category === category.id)[roundIndex])
-      .filter(Boolean);
-  });
+function managementLevelShortName(stageKey: MaturityStageKey) {
+  return managementLevelShortNames[stageKey];
 }
 
-const rounds = buildRounds();
+function scrollToPageTop() {
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+}
+
+function normalizeMode(mode: unknown): AppMode {
+  return typeof mode === "string" && activeModes.includes(mode as AppMode) ? (mode as AppMode) : "home";
+}
+
+function normalizeQuestionIndex(index: unknown) {
+  const numeric = typeof index === "number" && Number.isFinite(index) ? index : 0;
+  return Math.max(0, Math.min(diagnosticQuestions.length - 1, Math.trunc(numeric)));
+}
+
+function normalizeAnswers(value: unknown): Record<string, AnswerValue> {
+  if (!value || typeof value !== "object") return {};
+  const raw = value as Record<string, unknown>;
+  const questionIds = new Set(diagnosticQuestions.map((question) => question.id));
+
+  return Object.fromEntries(
+    Object.entries(raw).filter(([questionId, answer]) => questionIds.has(questionId) && typeof answer === "string" && validAnswerValues.has(answer as AnswerValue))
+  ) as Record<string, AnswerValue>;
+}
 
 function loadState(): SavedState {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) throw new Error("no saved state");
-    const parsed = JSON.parse(saved) as Partial<SavedState>;
+    const parsed = JSON.parse(saved) as Partial<SavedState> & { mode?: unknown };
     return {
-      mode: parsed.mode ?? "home",
-      currentRound: Math.min(parsed.currentRound ?? 0, rounds.length - 1),
-      currentCard: parsed.currentCard ?? 0,
-      selectedIds: parsed.selectedIds ?? [],
-      dismissedIds: parsed.dismissedIds ?? [],
-      selectionOrder: parsed.selectionOrder ?? [],
-      answers: parsed.answers ?? {},
-      otherAnswers: parsed.otherAnswers ?? {},
+      mode: normalizeMode(parsed.mode),
+      currentQuestionIndex: normalizeQuestionIndex(parsed.currentQuestionIndex),
+      answers: normalizeAnswers(parsed.answers),
       lead: { ...emptyLead, ...parsed.lead },
-      detailId: parsed.detailId ?? null,
       submittedAt: parsed.submittedAt ?? null
     };
   } catch {
     return {
       mode: "home",
-      currentRound: 0,
-      currentCard: 0,
-      selectedIds: [],
-      dismissedIds: [],
-      selectionOrder: [],
+      currentQuestionIndex: 0,
       answers: {},
-      otherAnswers: {},
       lead: emptyLead,
-      detailId: null,
       submittedAt: null
     };
   }
 }
 
-function uniqAdd(items: string[], id: string) {
-  return items.includes(id) ? items : [...items, id];
+function stageClass(stage: MaturityStageKey) {
+  return stageClassMap[stage];
 }
 
-function removeId(items: string[], id: string) {
-  return items.filter((item) => item !== id);
+function completedDiagnosisOrNull(diagnosis: ReturnType<typeof buildDiagnosis>): CompletedDiagnosis | null {
+  return diagnosis.status === "diagnosed" ? diagnosis : null;
 }
 
-function selectPocCandidates(selectedItems: AnalyticsItem[], selectionOrder: string[], diagnosis: DiagnosisResult) {
-  if (selectedItems.length === 0) {
-    return starterCandidateIds.map((id) => analyticsById[id]).filter(Boolean);
-  }
-
-  const orderedSelected = selectionOrder.map((id) => analyticsById[id]).filter(Boolean);
-  const candidates: AnalyticsItem[] = [];
-
-  diagnosis.topCategories.forEach(({ categoryId }) => {
-    const item = orderedSelected.find((selected) => selected.category === categoryId && !candidates.includes(selected));
-    if (item && candidates.length < 3) candidates.push(item);
-  });
-
-  diagnosis.topCategories.forEach(({ categoryId }) => {
-    const item = analytics.find((candidate) => candidate.category === categoryId && !candidates.includes(candidate));
-    if (item && candidates.length < 3) candidates.push(item);
-  });
-
-  orderedSelected.forEach((item) => {
-    if (candidates.length < 3 && !candidates.includes(item)) candidates.push(item);
-  });
-
-  analytics.forEach((item) => {
-    if (candidates.length < 3 && !candidates.includes(item)) candidates.push(item);
-  });
-
-  return candidates.slice(0, 3);
+function answerLabel(value?: AnswerValue) {
+  return answerOptions.find((option) => option.value === value)?.label ?? "未回答";
 }
 
-function answerLines(answers: Record<string, string[]>) {
-  return questionnaire
-    .map((item, index) => {
-      const values = answers[String(index)] ?? [];
-      return values.length ? `・${item.q}\n  回答: ${values.join("、")}` : "";
-    })
-    .filter(Boolean)
+function answerFeedbackLabel(value: AnswerValue) {
+  return answerOptions.find((option) => option.value === value)?.label ?? "回答";
+}
+
+function questionAnswerLines(answers: Record<string, AnswerValue>) {
+  return diagnosticQuestions
+    .map((question) => `${question.order}. ${question.question}\n   回答: ${answerLabel(answers[question.id])}\n   補足: ${question.examples}`)
     .join("\n");
 }
 
-function normalizedAnswers(answers: Record<string, string[]>, otherAnswers: Record<string, string>) {
-  return Object.fromEntries(
-    questionnaire.map((_, index) => {
-      const key = String(index);
-      const values = (answers[key] ?? []).filter((value) => value !== "その他");
-      const other = otherAnswers[key]?.trim();
-      return [key, other ? [...values, `その他: ${other}`] : values];
-    })
-  );
-}
-
-function maturityLabel(diagnosis: DiagnosisResult) {
-  return diagnosis.overallStage.label;
-}
-
-const MATURITY_FRAME_HELP = "成熟度は、課題カードと質問票から10領域を「未熟・標準・先進」で整理した初期診断です。正式な監査やベンチマークではありません。";
-const REPORT_BENEFITS = [
-  "10領域の成熟度",
-  "優先して整える領域",
-  "領域別の次アクション",
-  "初回PoC候補"
-];
-
-const STAGE_META: Record<MaturityStageKey, { shortLabel: string; description: string }> = {
-  immature: {
-    shortLabel: "未熟",
-    description: "優先して整備したい領域"
-  },
-  standard: {
-    shortLabel: "標準",
-    description: "運用をそろえる領域"
-  },
-  advanced: {
-    shortLabel: "先進",
-    description: "維持・高度化する領域"
-  },
-  pending: {
-    shortLabel: "保留",
-    description: "入力を増やして判定する領域"
-  }
-};
-
-function stageClassName(stage: MaturityStageKey) {
-  return `stage-${stage}`;
-}
-
-function stageCountItems(diagnosis: DiagnosisResult) {
-  return (["immature", "standard", "advanced"] as MaturityStageKey[]).map((key) => ({
-    key,
-    label: STAGE_META[key].shortLabel,
-    count: diagnosis.stageCounts[key]
-  }));
-}
-
-function diagnosisActionLabel(diagnosis: DiagnosisResult) {
-  return diagnosis.overallStage.actionTone;
-}
-
-function pocThemeLabel(diagnosis: DiagnosisResult) {
-  return diagnosis.isPocReferenceOnly ? "参考テーマ" : "初回検証テーマ";
-}
-
-function pocThemeValue(diagnosis: DiagnosisResult, count: number) {
-  return diagnosis.isPocReferenceOnly ? `${count}件を参考提示` : `${count}件を提案`;
-}
-
-function pocThemeHelp(diagnosis: DiagnosisResult) {
-  return diagnosis.isPocReferenceOnly
-    ? "入力が少ないため、診断確定ではなく参考テーマとして表示しています。"
-    : "診断上位カテゴリを、小さく試して妥当性を確認するPoC案です。導入決定ではありません。";
-}
-
-function generateSummaryText(
-  selectedItems: AnalyticsItem[],
-  candidates: AnalyticsItem[],
-  answers: Record<string, string[]>,
-  diagnosis: DiagnosisResult,
-  lead?: LeadForm
-) {
-  const selectedTitles = selectedItems.map((item) => `・${item.title}（${categoryById[item.category].name}）`).join("\n") || "・未選択";
-  const candidateLines = candidates
-    .map((item, index) => `${index + 1}. ${item.title}（${categoryById[item.category].name}）\n   ${item.decision}`)
+function generateSummaryText(diagnosis: CompletedDiagnosis, answers: Record<string, AnswerValue>, lead?: LeadForm) {
+  const roundLines = diagnosis.roundDiagnostics
+    .map((round) => `・${round.label}: ${round.score}/${round.maxScore}`)
     .join("\n");
-  const dataLines =
-    Array.from(new Set(candidates.flatMap((item) => item.data.split(/[、,]/).map((data) => data.trim()).filter(Boolean))))
-      .slice(0, 12)
-      .map((data) => `・${data}`)
-      .join("\n") || "・会計、売上、予算、部門KPI";
-  const topCategoryLines =
-    diagnosis.topCategories
-      .map((category, index) => (
-        `${index + 1}. ${category.categoryName} / 判定 ${category.maturityStage.label}\n`
-        + `   ${category.reason}\n`
-        + `   次のアクション: ${category.recommendedAction}\n`
-        + `   確認すること: ${category.nextCheck}`
-      ))
-      .join("\n") || "・入力不足のため未判定";
-  const evidenceLines = diagnosis.evidence.map((item) => `・${item}`).join("\n");
-  const nextCheckLines = diagnosis.nextChecks.map((item) => `・${item}`).join("\n");
+  const domainLines = diagnosis.domainDiagnostics
+    .map((domain) => `・${domain.domainName}: ${domain.totalScore}/${domain.maxScore} / ${managementLevelShortName(domain.maturityStage.key)}`)
+    .join("\n");
+  const actionLines = diagnosis.recommendedActions
+    .map((action) => `${action.priority}. ${action.domainName}: ${action.title}\n   ${action.action}`)
+    .join("\n");
 
   return [
     "【回答者】",
     lead ? `${lead.company} / ${lead.title} / ${lead.name} / ${lead.email}` : "未入力",
     "",
-    "【総合診断】",
-    `総合判定: ${maturityLabel(diagnosis)} / ${diagnosis.overallStage.actionTone}`,
-    diagnosis.summary,
-    MATURITY_FRAME_HELP,
+    "【総合成熟度】",
+    `貴社の経営管理レベルは「${managementLevelName(diagnosis.overallStage.key)}」です。`,
+    diagnosis.overallStage.summary,
     "",
-    "【診断根拠】",
-    evidenceLines || "・未入力",
+    "【ラウンド別スコア】",
+    roundLines,
     "",
-    "【優先確認カテゴリ】",
-    topCategoryLines,
+    "【領域別スコア】",
+    domainLines,
     "",
-    "【課題あり分析】",
-    selectedTitles,
+    "【次に取り組むべき5つのアクション】",
+    actionLines,
     "",
-    diagnosis.isPocReferenceOnly ? "【参考テーマ】" : "【初回検証テーマ（PoC案）】",
-    candidateLines,
+    "【プレゼントURL】",
+    ANALYTICS_CATALOG_URL,
     "",
-    "【質問票の回答】",
-    answerLines(answers) || "・未回答",
-    "",
-    "【次の検討で確認すること】",
-    nextCheckLines,
-    "",
-    "【確認すべき主要データ】",
-    dataLines
+    "【15問の回答】",
+    questionAnswerLines(answers)
   ].join("\n");
 }
 
 function buildSubmissionMailtoUrl(lead: LeadForm, summaryText: string) {
-  const subject = `FP&A Analytics Quest 診断結果: ${lead.company}`;
+  const subject = `FP&A診断結果: ${lead.company}`;
   const body = [
-    "FP&A Analytics Quest 診断結果",
+    "FP&A診断結果",
     "",
-    "以下の内容で診断結果を送信します。内容を変更せず、このまま送信してください。",
+    "以下の内容で診断結果を送信します。",
     "",
     summaryText
   ].join("\n");
-  const limitedBody =
-    body.length > 7500 ? `${body.slice(0, 7500)}\n\n※本文が長いため一部を省略しています。` : body;
+  const limitedBody = body.length > 7500 ? `${body.slice(0, 7500)}\n\n※本文が長いため一部を省略しています。` : body;
 
   return `mailto:${SUBMISSION_RECIPIENT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(limitedBody)}`;
 }
@@ -308,32 +214,14 @@ function App() {
   const [state, setState] = useState<SavedState>(() => loadState());
   const [submitState, setSubmitState] = useState<"idle" | "sending" | "error">("idle");
   const [submitError, setSubmitError] = useState("");
-  const [otherErrors, setOtherErrors] = useState<Record<string, string>>({});
+  const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
 
-  const selectedItems = useMemo(
-    () => state.selectionOrder.map((id) => analyticsById[id]).filter((item) => item && state.selectedIds.includes(item.id)),
-    [state.selectedIds, state.selectionOrder]
-  );
-  const dismissedItems = useMemo(() => state.dismissedIds.map((id) => analyticsById[id]).filter(Boolean), [state.dismissedIds]);
-  const questionnaireAnswers = useMemo(
-    () => normalizedAnswers(state.answers, state.otherAnswers),
-    [state.answers, state.otherAnswers]
-  );
-  const diagnosisResult = useMemo(
-    () => buildDiagnosis({ selectedItems, answers: questionnaireAnswers, categories }),
-    [selectedItems, questionnaireAnswers]
-  );
-  const deckDiagnosisResult = useMemo(
-    () => buildDiagnosis({ selectedItems, answers: {}, categories }),
-    [selectedItems]
-  );
-  const pocCandidates = useMemo(
-    () => selectPocCandidates(selectedItems, state.selectionOrder, diagnosisResult),
-    [selectedItems, state.selectionOrder, diagnosisResult]
-  );
-  const currentRoundItems = rounds[state.currentRound] ?? [];
-  const currentItem = currentRoundItems[state.currentCard];
-  const detailItem = analyticsById[state.detailId ?? ""] ?? analytics[0];
+  const progress = useMemo(() => buildProgressSummary(state.answers), [state.answers]);
+  const diagnosis = useMemo(() => buildDiagnosis(state.answers), [state.answers]);
+  const completedDiagnosis = completedDiagnosisOrNull(diagnosis);
+  const currentQuestion = diagnosticQuestions[state.currentQuestionIndex] ?? diagnosticQuestions[0];
+  const currentRoundIndex = diagnosticRounds.findIndex((round) => round.key === currentQuestion.round);
+  const isComplete = progress.missingCount === 0;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -342,183 +230,97 @@ function App() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(scrollToPageTop);
     return () => window.cancelAnimationFrame(frame);
-  }, [state.mode, state.currentRound, state.currentCard, state.detailId]);
+  }, [state.mode, state.currentQuestionIndex]);
 
-  function setMode(mode: AppMode) {
-    setState((current) => ({ ...current, mode }));
-    scrollToPageTop();
-  }
+  useEffect(() => {
+    if ((state.mode === "leadGate" || state.mode === "result") && !isComplete) {
+      setState((current) => ({
+        ...current,
+        mode: "deck",
+        currentQuestionIndex: getNextQuestionIndex(current.answers)
+      }));
+    }
+  }, [isComplete, state.mode]);
+
+  useEffect(() => {
+    if (!answerFeedback) return;
+    const timeout = window.setTimeout(() => setAnswerFeedback(null), 1200);
+    return () => window.clearTimeout(timeout);
+  }, [answerFeedback]);
+
+  useEffect(() => {
+    if (state.mode !== "deck" && answerFeedback) {
+      setAnswerFeedback(null);
+    }
+  }, [answerFeedback, state.mode]);
 
   function resetAll() {
     setSubmitState("idle");
     setSubmitError("");
+    setAnswerFeedback(null);
     setState({
       mode: "home",
-      currentRound: 0,
-      currentCard: 0,
-      selectedIds: [],
-      dismissedIds: [],
-      selectionOrder: [],
+      currentQuestionIndex: 0,
       answers: {},
-      otherAnswers: {},
       lead: emptyLead,
-      detailId: null,
       submittedAt: null
     });
+  }
+
+  function setMode(mode: AppMode) {
+    setState((current) => ({ ...current, mode }));
   }
 
   function startDeck() {
     setState((current) => ({
       ...current,
       mode: "deck",
-      currentRound: Math.min(current.currentRound, rounds.length - 1),
-      currentCard: Math.min(current.currentCard, (rounds[current.currentRound] ?? []).length - 1)
+      currentQuestionIndex: current.answers[diagnosticQuestions[current.currentQuestionIndex]?.id]
+        ? getNextQuestionIndex(current.answers)
+        : normalizeQuestionIndex(current.currentQuestionIndex)
     }));
   }
 
-  function chooseCard(item: AnalyticsItem, interested: boolean) {
+  function chooseAnswer(question: DiagnosticQuestion, answer: AnswerValue) {
+    const domain = domainById[question.domainId];
+    setAnswerFeedback({
+      id: Date.now(),
+      label: answerFeedbackLabel(answer),
+      message: `${domain.shortName}領域を更新しました`
+    });
+
     setState((current) => {
-      const selectedIds = interested ? uniqAdd(current.selectedIds, item.id) : removeId(current.selectedIds, item.id);
-      const dismissedIds = interested ? removeId(current.dismissedIds, item.id) : uniqAdd(current.dismissedIds, item.id);
-      const selectionOrder = interested ? uniqAdd(current.selectionOrder, item.id) : current.selectionOrder;
-      const roundItems = rounds[current.currentRound] ?? [];
-      const nextCard = current.currentCard + 1;
-      const roundDone = nextCard >= roundItems.length;
+      const answers = { ...current.answers, [question.id]: answer };
+      const isLastQuestion = question.order === diagnosticQuestions.length;
+      const shouldBreak = question.order === 5 || question.order === 10;
+      const nextIndex = Math.min(question.order, diagnosticQuestions.length - 1);
 
       return {
         ...current,
-        selectedIds,
-        dismissedIds,
-        selectionOrder,
-        currentCard: roundDone ? current.currentCard : nextCard,
-        mode: roundDone ? "roundBreak" : "deck"
+        answers,
+        currentQuestionIndex: isLastQuestion || shouldBreak ? current.currentQuestionIndex : nextIndex,
+        mode: isLastQuestion ? "leadGate" : shouldBreak ? "roundBreak" : "deck"
       };
     });
   }
 
-  function backOneCard() {
+  function backOneQuestion() {
     setState((current) => {
-      const roundItems = rounds[current.currentRound] ?? [];
-      if (current.currentCard <= 0) return current;
-
-      const previousCard = current.currentCard - 1;
-      const previousItem = roundItems[previousCard];
-      if (!previousItem) return current;
-
+      const nextIndex = Math.max(0, current.currentQuestionIndex - 1);
       return {
         ...current,
-        currentCard: previousCard,
-        selectedIds: removeId(current.selectedIds, previousItem.id),
-        dismissedIds: removeId(current.dismissedIds, previousItem.id),
-        selectionOrder: removeId(current.selectionOrder, previousItem.id),
+        currentQuestionIndex: nextIndex,
         mode: "deck"
       };
     });
   }
 
-  function continueRound() {
-    setState((current) => {
-      const nextRound = current.currentRound + 1;
-      if (nextRound >= rounds.length) {
-        return { ...current, mode: "questionnaire" };
-      }
-      return { ...current, currentRound: nextRound, currentCard: 0, mode: "deck" };
-    });
-  }
-
-  function addCandidate(item: AnalyticsItem) {
+  function continueFromBreak() {
     setState((current) => ({
       ...current,
-      selectedIds: uniqAdd(current.selectedIds, item.id),
-      dismissedIds: removeId(current.dismissedIds, item.id),
-      selectionOrder: uniqAdd(current.selectionOrder, item.id)
+      currentQuestionIndex: Math.min(current.currentQuestionIndex + 1, diagnosticQuestions.length - 1),
+      mode: "deck"
     }));
-  }
-
-  function toggleListCandidate(item: AnalyticsItem) {
-    setState((current) => {
-      const selected = current.selectedIds.includes(item.id);
-      return {
-        ...current,
-        selectedIds: selected ? removeId(current.selectedIds, item.id) : uniqAdd(current.selectedIds, item.id),
-        dismissedIds: selected ? current.dismissedIds : removeId(current.dismissedIds, item.id),
-        selectionOrder: selected ? current.selectionOrder : uniqAdd(current.selectionOrder, item.id)
-      };
-    });
-  }
-
-  function openDetail(item: AnalyticsItem) {
-    setState((current) => ({ ...current, detailId: item.id, mode: "detail" }));
-    scrollToPageTop();
-  }
-
-  function openNextDetail(item: AnalyticsItem) {
-    const currentIndex = analytics.findIndex((entry) => entry.id === item.id);
-    const nextItem = analytics[(currentIndex + 1) % analytics.length] ?? analytics[0];
-    setState((current) => ({ ...current, detailId: nextItem.id, mode: "detail" }));
-    scrollToPageTop();
-  }
-
-  function updateAnswer(questionIndex: number, option: string, checked: boolean) {
-    setState((current) => {
-      const key = String(questionIndex);
-      const currentAnswers = current.answers[key] ?? [];
-      const nextAnswers = checked ? uniqAdd(currentAnswers, option) : removeId(currentAnswers, option);
-      const otherAnswers = option === "その他" && !checked
-        ? { ...current.otherAnswers, [key]: "" }
-        : current.otherAnswers;
-      return {
-        ...current,
-        answers: {
-          ...current.answers,
-          [key]: nextAnswers
-        },
-        otherAnswers
-      };
-    });
-    if (option === "その他" && !checked) {
-      setOtherErrors((current) => {
-        const next = { ...current };
-        delete next[String(questionIndex)];
-        return next;
-      });
-    }
-  }
-
-  function updateOtherAnswer(questionIndex: number, value: string) {
-    const key = String(questionIndex);
-    setState((current) => ({
-      ...current,
-      otherAnswers: {
-        ...current.otherAnswers,
-        [key]: value
-      }
-    }));
-    if (value.trim()) {
-      setOtherErrors((current) => {
-        const next = { ...current };
-        delete next[key];
-        return next;
-      });
-    }
-  }
-
-  function proceedFromQuestionnaire() {
-    const errors = Object.fromEntries(
-      questionnaire
-        .map((_, index) => {
-          const key = String(index);
-          const hasOther = state.answers[key]?.includes("その他");
-          const missingOther = hasOther && !state.otherAnswers[key]?.trim();
-          return missingOther ? [key, "その他の内容を入力してください。"] : null;
-        })
-        .filter(Boolean) as Array<[string, string]>
-    );
-
-    setOtherErrors(errors);
-    if (Object.keys(errors).length === 0) {
-      setMode("leadGate");
-    }
   }
 
   function updateLead(field: keyof LeadForm, value: string) {
@@ -535,30 +337,31 @@ function App() {
     event.preventDefault();
     setSubmitError("");
 
+    const latestDiagnosis = buildDiagnosis(state.answers);
+    if (latestDiagnosis.status !== "diagnosed") {
+      setState((current) => ({
+        ...current,
+        mode: "deck",
+        currentQuestionIndex: getNextQuestionIndex(current.answers)
+      }));
+      return;
+    }
+
     const lead = state.lead;
     const missing = !lead.company.trim() || !lead.title.trim() || !lead.name.trim() || !lead.email.trim();
     if (missing) {
       setSubmitState("error");
-      setSubmitError("会社名・役職・お名前・メールアドレスを入力してください。");
+      setSubmitError("会社名、役職、お名前、メールアドレスを入力してください。");
       return;
     }
 
     const submittedAt = new Date().toISOString();
-    const summaryText = generateSummaryText(selectedItems, pocCandidates, questionnaireAnswers, diagnosisResult, lead);
+    const summaryText = generateSummaryText(latestDiagnosis, state.answers, lead);
     const payload: SubmissionPayload = {
       recipientEmail: SUBMISSION_RECIPIENT_EMAIL,
       lead,
-      selectedAnalytics: selectedItems.map((item) => ({
-        id: item.id,
-        title: item.title,
-        category: categoryById[item.category].name,
-        data: item.data,
-        decision: item.decision,
-        horizon: item.horizon
-      })),
-      dismissedAnalytics: dismissedItems.map((item) => item.id),
-      questionnaireAnswers,
-      diagnosisResult,
+      diagnosticAnswers: state.answers,
+      diagnosisResult: latestDiagnosis,
       summaryText,
       submittedAt
     };
@@ -581,861 +384,456 @@ function App() {
         },
         body: JSON.stringify({
           recipient_email: SUBMISSION_RECIPIENT_EMAIL,
-          _subject: "FP&A Analytics Quest 診断結果",
+          _subject: "FP&A診断結果",
           _replyto: lead.email,
           company: lead.company,
           title: lead.title,
           name: lead.name,
           email: lead.email,
-          interested_count: selectedItems.length,
-          recommended_poc: pocCandidates.map((item) => item.title).join(" / "),
-          diagnosis_maturity: maturityLabel(diagnosisResult),
-          diagnosis_issue_score: diagnosisResult.overallIssueScore,
-          diagnosis_top_categories: diagnosisResult.topCategories.map((category) => category.categoryName).join(" / "),
-          diagnosis_reference_only: diagnosisResult.isPocReferenceOnly ? "true" : "false",
+          overall_stage: managementLevelName(latestDiagnosis.overallStage.key),
+          answered_count: latestDiagnosis.answeredCount,
           summary: summaryText,
-          payload_json: JSON.stringify(payload, null, 2)
+          payload
         })
       });
 
-      if (!response.ok) throw new Error(`send failed: ${response.status}`);
+      if (!response.ok) throw new Error("送信に失敗しました。");
+
       setSubmitState("idle");
       setState((current) => ({ ...current, submittedAt, mode: "result" }));
     } catch {
       setSubmitState("error");
-      setSubmitError("送信に失敗しました。入力内容と回答は保持しています。時間をおいて再送してください。");
+      setSubmitError("送信できませんでした。時間をおいて再度お試しください。");
     }
   }
 
-  const shellClass = `app-shell mode-${state.mode}`;
+  const visibleMode = !isComplete && (state.mode === "leadGate" || state.mode === "result") ? "deck" : state.mode;
 
   return (
-    <main className={shellClass}>
-      <TopBar
-        mode={state.mode}
-        selectedCount={selectedItems.length}
-        roundLabel={`Round ${state.currentRound + 1}`}
-        onHome={() => setMode("home")}
-        onList={() => setMode("list")}
-        onReset={resetAll}
-      />
-
+    <div className="app-shell">
+      <Topbar answeredCount={progress.answeredCount} onHome={() => setMode("home")} onReset={resetAll} />
+      <AnswerFeedbackToast feedback={answerFeedback} />
       <AnimatePresence mode="wait">
-        {state.mode === "home" && (
-          <HomeScreen
-            key="home"
-            onStart={() => setMode("intro")}
-            onList={() => setMode("list")}
-          />
-        )}
-
-        {state.mode === "intro" && (
-          <IntroScreen
-            key="intro"
-            onStart={startDeck}
-            onBack={() => setMode("home")}
-          />
-        )}
-
-        {state.mode === "deck" && currentItem && (
+        {visibleMode === "home" && <HomeScreen key="home" onStart={startDeck} />}
+        {visibleMode === "deck" && (
           <DeckScreen
-            key="deck"
-            item={currentItem}
-            roundIndex={state.currentRound}
-            cardIndex={state.currentCard}
-            roundCardCount={currentRoundItems.length}
-            selectedCount={selectedItems.length}
-            canGoBack={state.currentCard > 0}
-            onBackOneCard={backOneCard}
-            onInterested={() => chooseCard(currentItem, true)}
-            onDismiss={() => chooseCard(currentItem, false)}
-          />
-        )}
-
-        {state.mode === "roundBreak" && (
-          <RoundBreakScreen
-            key="roundBreak"
-            roundIndex={state.currentRound}
-            selectedItems={selectedItems}
-            roundItems={currentRoundItems}
-            diagnosis={deckDiagnosisResult}
-            onContinue={continueRound}
-            onQuestionnaire={() => setMode("questionnaire")}
-          />
-        )}
-
-        {state.mode === "list" && (
-          <ListScreen
-            key="list"
-            selectedIds={state.selectedIds}
-            onToggle={toggleListCandidate}
-            onDetail={openDetail}
-            onQuestionnaire={() => setMode("questionnaire")}
-          />
-        )}
-
-        {state.mode === "detail" && (
-          <DetailScreen
-            key="detail"
-            item={detailItem}
-            selected={state.selectedIds.includes(detailItem.id)}
-            onAdd={addCandidate}
-            onBack={() => setMode("list")}
-            onNext={openNextDetail}
-          />
-        )}
-
-        {state.mode === "questionnaire" && (
-          <QuestionnaireScreen
-            key="questionnaire"
+            key={`deck-${currentQuestion.id}`}
+            question={currentQuestion}
+            answer={state.answers[currentQuestion.id]}
             answers={state.answers}
-            otherAnswers={state.otherAnswers}
-            otherErrors={otherErrors}
-            onChange={updateAnswer}
-            onOtherChange={updateOtherAnswer}
-            onBack={() => setMode("roundBreak")}
-            onNext={proceedFromQuestionnaire}
+            progress={progress}
+            roundIndex={currentRoundIndex}
+            canGoBack={state.currentQuestionIndex > 0}
+            onBackOne={backOneQuestion}
+            onAnswer={chooseAnswer}
           />
         )}
-
-        {state.mode === "leadGate" && (
+        {visibleMode === "roundBreak" && (
+          <RoundBreakScreen
+            key={`break-${currentQuestion.round}`}
+            progress={progress}
+            answers={state.answers}
+            completedQuestionIndex={state.currentQuestionIndex}
+            onBack={() => setMode("deck")}
+            onContinue={continueFromBreak}
+          />
+        )}
+        {visibleMode === "leadGate" && completedDiagnosis && (
           <LeadGateScreen
-            key="leadGate"
+            key="lead"
+            answers={state.answers}
             lead={state.lead}
-            diagnosis={diagnosisResult}
-            pocCandidates={pocCandidates}
+            diagnosis={completedDiagnosis}
             submitState={submitState}
             submitError={submitError}
+            onBack={() => setState((current) => ({ ...current, mode: "deck", currentQuestionIndex: diagnosticQuestions.length - 1 }))}
             onUpdate={updateLead}
             onSubmit={submitLead}
-            onBack={() => setMode("questionnaire")}
           />
         )}
-
-        {state.mode === "result" && (
+        {visibleMode === "result" && completedDiagnosis && (
           <ResultScreen
             key="result"
+            diagnosis={completedDiagnosis}
             lead={state.lead}
-            pocCandidates={pocCandidates}
-            diagnosis={diagnosisResult}
             submittedAt={state.submittedAt}
-            onList={() => setMode("list")}
-            onCatalogGift={() => setMode("catalogGift")}
-            onReset={resetAll}
-          />
-        )}
-
-        {state.mode === "catalogGift" && (
-          <CatalogGiftScreen
-            key="catalogGift"
-            diagnosis={diagnosisResult}
-            pocCandidates={pocCandidates}
-            onBack={() => setMode("result")}
             onReset={resetAll}
           />
         )}
       </AnimatePresence>
-    </main>
-  );
-}
-
-type TopBarProps = {
-  mode: AppMode;
-  selectedCount: number;
-  roundLabel: string;
-  onHome: () => void;
-  onList: () => void;
-  onReset: () => void;
-};
-
-function TopBar({ mode, selectedCount, roundLabel, onHome, onList, onReset }: TopBarProps) {
-  return (
-    <header className="topbar">
-      <button className="brand-mark" type="button" onClick={onHome}>
-        <span>FP&A</span>
-        <strong>Analytics Quest</strong>
-      </button>
-      <div className="status-strip" aria-live="polite">
-        <span>{mode === "deck" ? roundLabel : "課題ありカード"}</span>
-        <motion.strong
-          key={selectedCount}
-          initial={{ scale: 0.72, opacity: 0.2 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ type: "spring", stiffness: 420, damping: 18 }}
-        >
-          {selectedCount}
-        </motion.strong>
-      </div>
-      <nav className="top-actions" aria-label="Primary navigation">
-        <button type="button" onClick={onList}>
-          <ListChecks size={17} />
-          一覧
-        </button>
-        <button type="button" onClick={onReset}>
-          <RotateCcw size={16} />
-          Reset
-        </button>
-      </nav>
-    </header>
-  );
-}
-
-type HomeScreenProps = {
-  onStart: () => void;
-  onList: () => void;
-};
-
-function HomeScreen({ onStart, onList }: HomeScreenProps) {
-  return (
-    <motion.section className="home-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="home-copy">
-        <p className="eyebrow">Executive Analytics Quest</p>
-        <h1 className="home-title">
-          <span className="home-title-line">あなたの会社に求められる</span>
-          <span className="home-title-line">経営管理とは</span>
-        </h1>
-        <p>
-          経営管理に関する質問カードに答えると、FP&Aの10領域を「未熟・標準・先進」で整理し、次に取るべきアクションまで診断します。
-        </p>
-        <div className="home-benefits" aria-label="診断後に分かること">
-          {REPORT_BENEFITS.map((benefit) => (
-            <span key={benefit}>
-              <Check size={14} />
-              {benefit}
-            </span>
-          ))}
-        </div>
-        <div className="home-actions">
-          <button className="primary-action" type="button" onClick={onStart}>
-            <Sparkles size={20} />
-            さっそく始める
-          </button>
-          <button className="secondary-action" type="button" onClick={onList}>
-            <ListChecks size={19} />
-            一覧を見る
-          </button>
-        </div>
-      </div>
-      <div className="deck-preview" aria-hidden="true">
-        {categories.slice(0, 5).map((category, index) => (
-          <motion.div
-            className="preview-card"
-            key={category.id}
-            style={{ "--accent": category.accent, rotate: `${-8 + index * 4}deg`, zIndex: 10 - index } as React.CSSProperties}
-            initial={{ y: 28, opacity: 0 }}
-            animate={{ y: index * 11, opacity: 1 }}
-            transition={{ delay: 0.08 * index, type: "spring", stiffness: 140, damping: 18 }}
-          >
-            <span>Round Card</span>
-            <strong>{category.name}</strong>
-            <em>{category.question}</em>
-          </motion.div>
-        ))}
-      </div>
-    </motion.section>
-  );
-}
-
-type IntroScreenProps = {
-  onStart: () => void;
-  onBack: () => void;
-};
-
-function IntroScreen({ onStart, onBack }: IntroScreenProps) {
-  const steps = [
-    {
-      label: "1",
-      title: "できている領域と課題領域を分ける",
-      text: "各カードで、自社でその分析や判断ができているかを短く確認します。"
-    },
-    {
-      label: "2",
-      title: "10領域の暫定診断を見ながら進む",
-      text: "小休止ごとに、未熟・標準・先進の分布と重点領域を確認できます。"
-    },
-    {
-      label: "3",
-      title: "最後にアクションまで受け取る",
-      text: "診断結果では、領域別の次アクションと初回PoC候補まで整理します。"
-    }
-  ];
-
-  return (
-    <motion.section className="intro-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-      <div className="intro-copy">
-        <p className="eyebrow">How It Works</p>
-        <h1>3分で、FP&Aの現在地を整理します</h1>
-        <p>各カードは、自社でその分析や判断ができているかを確認するための問いです。回答が増えるほど、10領域の判定とアクション提案の精度が高まります。</p>
-        <div className="intro-actions">
-          <button className="primary-action" type="button" onClick={onStart}>
-            <Target size={20} />
-            カードをめくる
-          </button>
-          <button className="ghost-action" type="button" onClick={onBack}>
-            <ArrowLeft size={18} />
-            戻る
-          </button>
-        </div>
-      </div>
-      <div className="intro-steps">
-        {steps.map((step) => (
-          <article className="intro-step" key={step.label}>
-            <span>{step.label}</span>
-            <div>
-              <h2>{step.title}</h2>
-              <p>{step.text}</p>
-            </div>
-          </article>
-        ))}
-      </div>
-    </motion.section>
-  );
-}
-
-type DeckScreenProps = {
-  item: AnalyticsItem;
-  roundIndex: number;
-  cardIndex: number;
-  roundCardCount: number;
-  selectedCount: number;
-  canGoBack: boolean;
-  onBackOneCard: () => void;
-  onInterested: () => void;
-  onDismiss: () => void;
-};
-
-function DeckScreen({ item, roundIndex, cardIndex, roundCardCount, selectedCount, canGoBack, onBackOneCard, onInterested, onDismiss }: DeckScreenProps) {
-  const category = categoryById[item.category];
-  const remaining = Math.max(0, roundCardCount - cardIndex - 1);
-
-  return (
-    <motion.section className="deck-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="round-panel">
-        <span>Round {roundIndex + 1}</span>
-        <strong>このラウンド {cardIndex + 1}枚目</strong>
-        <em>あと{remaining}枚でちょっと休憩</em>
-        <button className="card-back-action" type="button" onClick={onBackOneCard} disabled={!canGoBack}>
-          <ArrowLeft size={15} />
-          1枚戻る
-        </button>
-      </div>
-
-      <div className="candidate-stack" aria-live="polite">
-        <Layers3 size={18} />
-        <span>課題ありカード</span>
-        <motion.strong key={selectedCount} initial={{ y: -8 }} animate={{ y: 0 }}>
-          {selectedCount}
-        </motion.strong>
-      </div>
-
-      <motion.article
-        key={item.id}
-        className="quest-card"
-        style={{ "--accent": category.accent } as React.CSSProperties}
-        initial={{ rotateY: -82, scale: 0.94, opacity: 0 }}
-        animate={{ rotateY: 0, scale: 1, opacity: 1 }}
-        exit={{ rotateY: 70, opacity: 0 }}
-        transition={{ type: "spring", stiffness: 180, damping: 19 }}
-      >
-        <div className="quest-card-face">
-          <div className="card-topline">
-            <span>{category.name}</span>
-            <em>{item.horizon}</em>
-          </div>
-          <div className="capability-prompt">
-            <span>あなたの会社ではできていますか</span>
-            <h2>{item.capability}</h2>
-          </div>
-          <div className="prompt-connector" aria-hidden="true">
-            <span />
-          </div>
-          <div className="reveal-panel">
-            <div className="reveal-heading">
-              <span>実現のために必要な分析</span>
-              <em>分析イメージ: {chartName(item.chart)}</em>
-            </div>
-            <strong>{item.title}</strong>
-            <p className="analysis-description">{item.analysisDescription}</p>
-            <div className="chart-frame analysis-image" dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent, "large") }} />
-            <div className="action-note">
-              <span>打てるアクション</span>
-              <p>{item.decision}</p>
-            </div>
-          </div>
-        </div>
-      </motion.article>
-
-      <div className="deck-actions">
-        <button className="reject-action" type="button" onClick={onDismiss}>
-          <ThumbsUp size={22} />
-          できている
-        </button>
-        <button className="accept-action issue-hover-action" type="button" onClick={onInterested}>
-          <TriangleAlert size={22} />
-          課題あり
-        </button>
-      </div>
-    </motion.section>
-  );
-}
-
-type RoundBreakScreenProps = {
-  roundIndex: number;
-  selectedItems: AnalyticsItem[];
-  roundItems: AnalyticsItem[];
-  diagnosis: DiagnosisResult;
-  onContinue: () => void;
-  onQuestionnaire: () => void;
-};
-
-function RoundBreakScreen({ roundIndex, selectedItems, roundItems, diagnosis, onContinue, onQuestionnaire }: RoundBreakScreenProps) {
-  const roundSelected = roundItems.filter((item) => selectedItems.some((selected) => selected.id === item.id));
-  const isFinalRound = roundIndex >= rounds.length - 1;
-  const diagnosisActionClassName = `primary-action${isFinalRound ? " final-diagnosis-action" : ""}`;
-  const completedCardCount = rounds
-    .slice(0, roundIndex + 1)
-    .reduce((sum, round) => sum + round.length, 0);
-  const remainingCardCount = Math.max(0, analytics.length - completedCardCount);
-  const confidencePercent = Math.round((completedCardCount / analytics.length) * 100);
-  const nextRoundCount = Math.min(remainingCardCount, rounds[roundIndex + 1]?.length ?? remainingCardCount);
-  const nextPrecisionTargets = (diagnosis.topCategories.length ? diagnosis.topCategories : diagnosis.categoryDiagnostics)
-    .slice(0, 3)
-    .map((category) => category.categoryName);
-  const progressMessage = remainingCardCount > 0
-    ? `全${analytics.length}枚のうち${completedCardCount}枚を確認しました。次の${nextRoundCount}問で、重点領域の確からしさを高めます。`
-    : `全${analytics.length}枚の確認が完了しました。ここまでの選択内容で最終診断に進めます。`;
-  const breakTitles = [
-    "10領域の現在地が見え始めています",
-    "重点領域の輪郭がはっきりしてきました",
-    "診断に必要な全体像がそろいました"
-  ];
-  const breakDescriptions = [
-    "ここまでの回答を、最終結果と同じ「未熟・標準・先進」のフレームで暫定整理しています。",
-    "次のラウンドに進むと、いま見えている重点領域が本当に優先かを確認できます。",
-    "このあと質問票で会議体やデータの状況を補足すると、次アクションまで具体化できます。"
-  ];
-  const breakTitle = breakTitles[Math.min(roundIndex, breakTitles.length - 1)];
-  const breakDescription = breakDescriptions[Math.min(roundIndex, breakDescriptions.length - 1)];
-
-  return (
-    <motion.section className="break-screen" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-      <div className="break-copy">
-        <p className="eyebrow">Round {roundIndex + 1} Complete</p>
-        <h1>{breakTitle}</h1>
-        <p>{breakDescription}</p>
-        <p className="break-progress-note">{progressMessage}</p>
-      </div>
-      <div className="break-diagnosis-panel">
-        <div className="break-confidence">
-          <span>ここまでの診断精度</span>
-          <strong>{confidencePercent}%</strong>
-          <div className="confidence-track" aria-hidden="true">
-            <i style={{ width: `${confidencePercent}%` }} />
-          </div>
-          <p>回答数が増えるほど、領域別の判定とアクション提案が具体化します。</p>
-        </div>
-        <StageDistribution diagnosis={diagnosis} />
-        <div className="break-focus-list">
-          <span>現時点の重点領域トップ3</span>
-          {diagnosis.topCategories.slice(0, 3).map((category, index) => (
-            <article key={category.categoryId} className={stageClassName(category.maturityStage.key)}>
-              <em>{index + 1}</em>
-              <div>
-                <strong>{category.categoryName}</strong>
-                <small>{category.maturityStage.label} / {category.maturityStage.actionTone}</small>
-              </div>
-            </article>
-          ))}
-        </div>
-        {remainingCardCount > 0 && (
-          <div className="break-next-focus">
-            <span>次の10問で精度が上がる領域</span>
-            <p>{nextPrecisionTargets.join("、")}を中心に、判定の根拠を増やします。</p>
-          </div>
-        )}
-      </div>
-      <div className="mini-cards">
-        {roundSelected.length ? (
-          roundSelected.map((item) => <SmallCandidate key={item.id} item={item} />)
-        ) : (
-          <p className="empty-note">このラウンドでは「課題あり」はありませんでした。次のラウンドで別の観点を確認できます。</p>
-        )}
-      </div>
-      <div className="break-actions">
-        {isFinalRound ? (
-          <>
-            <button className={diagnosisActionClassName} type="button" onClick={onQuestionnaire}>
-              <ClipboardList size={19} />
-              診断に進む
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="primary-action continue-round-action" type="button" onClick={onContinue}>
-              続けてめくる
-              <ArrowRight size={20} />
-            </button>
-            <button className="secondary-action compact diagnosis-shortcut-action" type="button" onClick={onQuestionnaire}>
-              <ClipboardList size={17} />
-              ここまでで診断に進む
-            </button>
-          </>
-        )}
-      </div>
-    </motion.section>
-  );
-}
-
-function SmallCandidate({ item }: { item: AnalyticsItem }) {
-  const category = categoryById[item.category];
-  return (
-    <article className="small-candidate" style={{ "--accent": category.accent } as React.CSSProperties}>
-      <span>{category.name}</span>
-      <strong>{item.title}</strong>
-    </article>
-  );
-}
-
-function StageDistribution({ diagnosis, compact = false }: { diagnosis: DiagnosisResult; compact?: boolean }) {
-  const visibleItems = diagnosis.status === "insufficient"
-    ? ([{ key: "pending" as MaturityStageKey, label: STAGE_META.pending.shortLabel, count: diagnosis.stageCounts.pending }])
-    : stageCountItems(diagnosis);
-
-  return (
-    <div className={`stage-distribution ${compact ? "is-compact" : ""} ${diagnosis.status === "insufficient" ? "is-pending-only" : ""}`} aria-label="成熟度分布">
-      {visibleItems.map((item) => (
-        <div className={stageClassName(item.key)} key={item.key}>
-          <span>{item.label}</span>
-          <strong>{item.count}</strong>
-          <small>{STAGE_META[item.key].description}</small>
-        </div>
-      ))}
     </div>
   );
 }
 
-type ListScreenProps = {
-  selectedIds: string[];
-  onToggle: (item: AnalyticsItem) => void;
-  onDetail: (item: AnalyticsItem) => void;
-  onQuestionnaire: () => void;
-};
-
-function ListScreen({ selectedIds, onToggle, onDetail, onQuestionnaire }: ListScreenProps) {
+function AnswerFeedbackToast({ feedback }: { feedback: AnswerFeedback | null }) {
   return (
-    <motion.section className="list-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="section-title">
-        <p className="eyebrow">Analytics Library</p>
-        <h1>分析カード一覧</h1>
-        <button className="primary-action compact" type="button" onClick={onQuestionnaire}>
-          <ClipboardList size={18} />
-          診断に進む
-        </button>
-      </div>
-      <div className="analysis-grid">
-        {analytics.map((item) => {
-          const category = categoryById[item.category];
-          const selected = selectedIds.includes(item.id);
-          return (
-            <article className={`library-card ${selected ? "is-selected" : ""}`} key={item.id} style={{ "--accent": category.accent } as React.CSSProperties}>
-              <div className="library-viz" dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent) }} />
-              <div className="library-body">
-                <span>{category.name}</span>
-                <h2>{item.title}</h2>
-                <p>{item.question}</p>
-              </div>
-              <div className="library-actions">
-                <button type="button" className="select-button issue-hover-action" onClick={() => onToggle(item)}>
-                  <TriangleAlert size={17} />
-                  {selected ? "課題ありに追加済み" : "課題あり"}
-                </button>
-                <button type="button" className="detail-button" onClick={() => onDetail(item)}>
-                  <Eye size={17} />
-                  詳細を見る
-                </button>
-              </div>
-            </article>
-          );
-        })}
-      </div>
-      <div className="mobile-list-cta">
-        <button className="primary-action" type="button" onClick={onQuestionnaire}>
-          <ClipboardList size={18} />
-          診断に進む
-        </button>
-      </div>
-    </motion.section>
+    <AnimatePresence>
+      {feedback && (
+        <motion.div
+          className="answer-feedback"
+          key={feedback.id}
+          initial={{ opacity: 0, y: -10, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -8, scale: 0.98 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          aria-live="polite"
+        >
+          <Check size={16} />
+          <span>{feedback.label}</span>
+          <strong>{feedback.message}</strong>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-type DetailScreenProps = {
-  item: AnalyticsItem;
-  selected: boolean;
-  onAdd: (item: AnalyticsItem) => void;
-  onBack: () => void;
-  onNext: (item: AnalyticsItem) => void;
-};
-
-function DetailScreen({ item, selected, onAdd, onBack, onNext }: DetailScreenProps) {
-  const category = categoryById[item.category];
-
+function Topbar({ answeredCount, onHome, onReset }: { answeredCount: number; onHome: () => void; onReset: () => void }) {
   return (
-    <motion.section className="detail-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <button className="back-link" type="button" onClick={onBack}>
-        <ArrowLeft size={17} />
-        一覧に戻る
+    <header className="topbar">
+      <button className="brand-mark" type="button" onClick={onHome} aria-label="ホームへ戻る">
+        <span>FP&A</span>
+        <strong>経営管理レベル診断</strong>
       </button>
-      <div className="detail-layout">
-        <article className="atlas-card" style={{ "--accent": category.accent } as React.CSSProperties}>
-          <span className="atlas-category">{category.name}</span>
-          <h1>{item.title}</h1>
-          <div className="atlas-chart" dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent, "large") }} />
-          <p>{item.question}</p>
-          <div className="atlas-tags">
-            {category.tags.slice(0, 4).map((tag) => (
-              <span key={tag}>{tag}</span>
-            ))}
-          </div>
-        </article>
-        <div className="detail-copy">
-          <p className="eyebrow">Analysis Card</p>
-          <h2>この分析で見えること</h2>
-          <p>{category.promise}</p>
-          <dl>
-            <div>
-              <dt>必要データ</dt>
-              <dd>{item.data}</dd>
-            </div>
-            <div>
-              <dt>意思決定にどう使うか</dt>
-              <dd>{item.decision}</dd>
-            </div>
-            <div>
-              <dt>PoCで最初に作るもの</dt>
-              <dd>{category.poc}</dd>
-            </div>
-            <div>
-              <dt>確認サイクル</dt>
-              <dd>{item.horizon}</dd>
-            </div>
-          </dl>
-          <div className="detail-actions">
-            <button className="primary-action compact issue-hover-action" type="button" onClick={() => onAdd(item)} disabled={selected}>
-              <Check size={18} />
-              {selected ? "課題ありに追加済み" : "課題ありに追加"}
-            </button>
-            <button className="secondary-action compact" type="button" onClick={() => onNext(item)}>
-              <ArrowRight size={18} />
-              次の分析を見る
-            </button>
-            <button className="secondary-action compact" type="button" onClick={onBack}>
-              <ArrowLeft size={18} />
-              一覧に戻る
-            </button>
-          </div>
-        </div>
+      <div className="status-strip" aria-label={`回答済み ${answeredCount} 問、全15問`}>
+        <span>回答</span>
+        <strong>{answeredCount}</strong>
+        <span>/ 15問</span>
       </div>
-    </motion.section>
+      <div className="top-actions">
+        <button type="button" onClick={onReset}>
+          <RotateCcw size={17} />
+          <span>最初から</span>
+        </button>
+      </div>
+    </header>
   );
 }
 
-type QuestionnaireScreenProps = {
-  answers: Record<string, string[]>;
-  otherAnswers: Record<string, string>;
-  otherErrors: Record<string, string>;
-  onChange: (questionIndex: number, option: string, checked: boolean) => void;
-  onOtherChange: (questionIndex: number, value: string) => void;
-  onBack: () => void;
-  onNext: () => void;
-};
-
-function QuestionnaireScreen({ answers, otherAnswers, otherErrors, onChange, onOtherChange, onBack, onNext }: QuestionnaireScreenProps) {
+function ProgressQuestMap({
+  answers,
+  currentQuestionId,
+  className = ""
+}: {
+  answers: Record<string, AnswerValue>;
+  currentQuestionId?: string;
+  className?: string;
+}) {
   return (
-    <motion.section className="questionnaire-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="section-title questionnaire-title">
-        <p className="eyebrow">Workshop Questionnaire</p>
-        <h1>診断に必要な追加情報</h1>
-        <div className="questionnaire-badge-row">
-          <div className="questionnaire-final-badge" aria-label="この画面が最後です">
-            <Check size={16} />
-            この画面が最後です
-          </div>
-          <div className="questionnaire-multiple-badge" aria-label="アンケートは複数選択できます">
-            <ListChecks size={16} />
-            複数選択可
-          </div>
-        </div>
-        <p>カードで残した課題と合わせて、10領域の成熟度と次に取るべきアクションを具体化します。</p>
-      </div>
-      <div className="question-grid">
-        {questionnaire.map((item, questionIndex) => (
-          <article
-            className="question-block"
-            key={item.q}
-            role="group"
-            aria-labelledby={`question-${questionIndex}`}
-          >
-            <h2 id={`question-${questionIndex}`}>{questionIndex + 1}. {item.q}</h2>
-            <div className="answer-options">
-              {[...item.options, "その他"].map((option) => {
-                const checked = answers[String(questionIndex)]?.includes(option) ?? false;
-                const id = `q-${questionIndex}-${option}`;
+    <div className={`quest-map ${className}`} aria-label="診断進捗マップ">
+      {diagnosticRounds.map((round) => {
+        const roundQuestions = diagnosticQuestions.filter((question) => question.round === round.key);
+        const completedCount = roundQuestions.filter((question) => answers[question.id]).length;
+
+        return (
+          <div className="quest-map-round" key={round.key}>
+            <span>
+              {round.label}
+              <small>{roundExperienceLabels[round.key]}</small>
+            </span>
+            <div className="quest-map-dots">
+              {roundQuestions.map((question) => {
+                const isDone = Boolean(answers[question.id]);
+                const isCurrent = question.id === currentQuestionId;
+
                 return (
-                  <label key={option} htmlFor={id} className={checked ? "is-checked" : ""}>
-                    <input
-                      id={id}
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => onChange(questionIndex, option, event.target.checked)}
-                    />
-                    {option}
-                  </label>
+                  <i
+                    aria-label={`${round.label} ${question.order}問目 ${isDone ? "回答済み" : isCurrent ? "回答中" : "未回答"}`}
+                    className={`${isDone ? "is-done" : ""} ${isCurrent ? "is-current" : ""}`}
+                    key={question.id}
+                  />
                 );
               })}
             </div>
-            {answers[String(questionIndex)]?.includes("その他") && (
-              <label className="other-answer" htmlFor={`q-${questionIndex}-other-text`}>
-                その他の内容
-                <input
-                  id={`q-${questionIndex}-other-text`}
-                  type="text"
-                  value={otherAnswers[String(questionIndex)] ?? ""}
-                  onChange={(event) => onOtherChange(questionIndex, event.target.value)}
-                  placeholder="例: 自社固有のKPI、海外拠点、代理店別など"
-                  aria-invalid={Boolean(otherErrors[String(questionIndex)])}
-                />
-              </label>
-            )}
-            {otherErrors[String(questionIndex)] && (
-              <p className="question-error">{otherErrors[String(questionIndex)]}</p>
-            )}
+            <em>{completedCount} / {roundQuestions.length}</em>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function HomeScreen({ onStart }: { onStart: () => void }) {
+  return (
+    <motion.main className="home-screen" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+      <section className="home-hero">
+        <div className="home-copy">
+          <p className="eyebrow">FP&A Management Diagnosis</p>
+          <h1 className="home-title">
+            <span>経営管理の5領域を、</span>
+            <span>どこまでできているか</span>
+            <span>見える化します</span>
+          </h1>
+          <p>
+            15問に答えるだけで、5領域の現在地と、次に取り組むべき5つのアクションを確認できます。
+          </p>
+          <div className="home-benefits" aria-label="診断で分かること">
+            <span><ClipboardList size={18} /> 5領域の達成度</span>
+            <span><BarChart3 size={18} /> 経営管理の現在地</span>
+            <span><Check size={18} /> 取り組むべき5アクション</span>
+          </div>
+          <div className="home-actions">
+            <button className="primary-action" type="button" onClick={onStart}>
+              診断を始める
+              <ArrowRight size={19} />
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="home-framework" aria-labelledby="home-framework-heading">
+        <div className="section-intro">
+          <p className="eyebrow">Five Domains</p>
+          <h2 id="home-framework-heading">経営管理の5領域</h2>
+          <p>
+            経営管理を、数字の土台から会議後の実行まで一連の流れとして確認します。どこが整っていて、どこが次の制約になっているかを領域別に見ます。
+          </p>
+        </div>
+        <div className="domain-explainer-grid">
+          {domains.map((domain, index) => (
+            <article className="domain-explainer-card" key={domain.id} style={{ "--accent": domain.accent } as CSSProperties}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <h3>{domain.name}</h3>
+              <p>{domain.description}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="home-outcome" aria-labelledby="home-outcome-heading">
+        <div className="section-intro">
+          <p className="eyebrow">After Visualization</p>
+          <h2 id="home-outcome-heading">見える化のあと、貴社が取り組むべき5つのアクションを提案します</h2>
+          <p>
+            診断結果はスコアで終わらせません。5領域それぞれに対して、基本・応用・AIのどこから手をつけるべきかを整理し、次に進める行動に落とし込みます。
+          </p>
+        </div>
+        <div className="outcome-list" aria-label="診断後のアウトプット">
+          <article>
+            <span><Check size={18} /></span>
+            <strong>5領域それぞれに、次の一手を提示</strong>
+            <p>診断結果から優先度を見て、会議・データ・分析・実行へつながる具体的なアクションに落とし込みます。</p>
           </article>
-        ))}
-      </div>
-      <div className="flow-actions">
-        <button className="secondary-action compact" type="button" onClick={onBack}>
+        </div>
+      </section>
+    </motion.main>
+  );
+}
+
+type DeckScreenProps = {
+  question: DiagnosticQuestion;
+  answer?: AnswerValue;
+  answers: Record<string, AnswerValue>;
+  progress: ReturnType<typeof buildProgressSummary>;
+  roundIndex: number;
+  canGoBack: boolean;
+  onBackOne: () => void;
+  onAnswer: (question: DiagnosticQuestion, answer: AnswerValue) => void;
+};
+
+function DeckScreen({ question, answer, answers, progress, roundIndex, canGoBack, onBackOne, onAnswer }: DeckScreenProps) {
+  const domain = domainById[question.domainId];
+  const round = roundByKey[question.round];
+  const progressPercent = Math.round((progress.answeredCount / progress.totalQuestions) * 100);
+
+  return (
+    <motion.main className="deck-screen" initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+      <aside className="round-panel">
+        <span>Round {roundIndex + 1}</span>
+        <strong>{round.label}</strong>
+        <em>{question.order} / 15問</em>
+        <button className="card-back-action" type="button" onClick={onBackOne} disabled={!canGoBack}>
+          <ArrowLeft size={15} />
+          1問戻る
+        </button>
+        <ProgressQuestMap answers={answers} currentQuestionId={question.id} className="compact-map" />
+      </aside>
+
+      <section className="question-card" style={{ "--accent": domain.accent } as CSSProperties}>
+        <div className="question-card-head">
+          <span>{round.label}ラウンド / {roundExperienceLabels[round.key]}</span>
+          <em>{domain.name}</em>
+        </div>
+        <QuestionIllustration kind={question.illustrationKey} accent={domain.accent} alt={question.illustrationAlt} />
+        <div className="question-body">
+          <h1>{question.question}</h1>
+          <p><strong>補足:</strong> {question.examples}</p>
+        </div>
+        <div className="answer-options" aria-label="回答選択肢">
+          {answerOptions.map((option) => (
+            <button
+              className={answer === option.value ? "is-selected" : ""}
+              key={option.value}
+              type="button"
+              onClick={() => onAnswer(question, option.value)}
+            >
+              <span className="answer-option-label">
+                <i className="answer-option-check" aria-hidden="true"><Check size={14} /></i>
+                <span>{option.label}</span>
+              </span>
+              <small>{option.description}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <aside className="progress-panel" aria-label="回答進捗">
+        <span>進捗</span>
+        <strong>{progressPercent}%</strong>
+        <div className="progress-track"><i style={{ width: `${progressPercent}%` }} /></div>
+        <p>15問すべてに回答すると、詳細レポートへ進めます。</p>
+      </aside>
+    </motion.main>
+  );
+}
+
+function RoundBreakScreen({
+  progress,
+  answers,
+  completedQuestionIndex,
+  onBack,
+  onContinue
+}: {
+  progress: ReturnType<typeof buildProgressSummary>;
+  answers: Record<string, AnswerValue>;
+  completedQuestionIndex: number;
+  onBack: () => void;
+  onContinue: () => void;
+}) {
+  const completedQuestion = diagnosticQuestions[completedQuestionIndex];
+  const completedRound = roundByKey[completedQuestion.round];
+  const roundQuestions = diagnosticQuestions.filter((question) => question.round === completedQuestion.round);
+  const roundDiagnosis = progress.roundDiagnostics.find((round) => round.round === completedQuestion.round);
+  const nextRound = diagnosticRounds[diagnosticRounds.findIndex((round) => round.key === completedQuestion.round) + 1];
+  const nextQuestion = nextRound ? diagnosticQuestions.find((question) => question.round === nextRound.key) : undefined;
+
+  return (
+    <motion.main className="break-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+      <section className="break-copy">
+        <p className="eyebrow">Round Clear</p>
+        <h1>{completedRound.label}ラウンドが完了しました</h1>
+        <p>
+          {roundExperienceLabels[completedRound.key]}ための5領域が揃いました。次のラウンドで、診断レポートの精度をもう一段上げます。
+        </p>
+      </section>
+
+      <section className="round-achievement" aria-label={`${completedRound.label}ラウンド達成`}>
+        <div>
+          <Sparkles size={22} />
+          <span>{completedRound.label}マップ完成</span>
+          <strong>{nextRound ? `${nextRound.label}ラウンドを解放しました` : "詳細レポートを生成できます"}</strong>
+        </div>
+        <ProgressQuestMap answers={answers} currentQuestionId={nextQuestion?.id} />
+      </section>
+
+      <section className="break-dashboard">
+        <article>
+          <span>ここまでの回答</span>
+          <strong>{progress.answeredCount} / 15問</strong>
+          <p>15問すべてに回答するまで、詳細レポートには進めません。</p>
+        </article>
+        <article>
+          <span>{completedRound.label}スコア</span>
+          <strong>{roundDiagnosis?.score ?? 0} / {roundDiagnosis?.maxScore ?? 10}</strong>
+          <p>{completedRound.summary}</p>
+        </article>
+        <article>
+          <span>次のラウンド</span>
+          <strong>{nextRound?.label ?? "詳細レポート"}</strong>
+          <p>{nextRound?.summary ?? "全15問の回答を使って、成熟度と5つのアクションをまとめます。"}</p>
+        </article>
+      </section>
+
+      <section className="round-map" aria-label={`${completedRound.label}ラウンドの5領域マップ`}>
+        {roundQuestions.map((question) => {
+          const domain = domainById[question.domainId];
+          return (
+            <article key={question.id} style={{ "--accent": domain.accent } as CSSProperties}>
+              <span>{domain.shortName}</span>
+              <strong>{answerLabel(answers[question.id])}</strong>
+              <p>{question.examples}</p>
+            </article>
+          );
+        })}
+      </section>
+
+      <div className="break-actions">
+        <button className="secondary-action" type="button" onClick={onBack}>
           <ArrowLeft size={18} />
-          戻る
+          回答を見直す
         </button>
-        <button className="primary-action compact" type="button" onClick={onNext}>
+        <button className="primary-action continue-round-action" type="button" onClick={onContinue}>
+          {nextRound ? `${nextRound.label}ラウンドへ進む` : "詳細レポートへ進む"}
           <ArrowRight size={18} />
-          結果プレビューへ
         </button>
       </div>
-    </motion.section>
+    </motion.main>
   );
 }
 
 type LeadGateScreenProps = {
+  answers: Record<string, AnswerValue>;
   lead: LeadForm;
-  diagnosis: DiagnosisResult;
-  pocCandidates: AnalyticsItem[];
+  diagnosis: CompletedDiagnosis;
   submitState: "idle" | "sending" | "error";
   submitError: string;
+  onBack: () => void;
   onUpdate: (field: keyof LeadForm, value: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
-  onBack: () => void;
 };
 
-function LeadGateScreen({
-  lead,
-  diagnosis,
-  pocCandidates,
-  submitState,
-  submitError,
-  onUpdate,
-  onSubmit,
-  onBack
-}: LeadGateScreenProps) {
-  const shouldReduceMotion = useReducedMotion();
+function LeadGateScreen({ answers, lead, diagnosis, submitState, submitError, onBack, onUpdate, onSubmit }: LeadGateScreenProps) {
+  const firstAction = diagnosis.recommendedActions[0];
 
   return (
-    <motion.section className="lead-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-      <div className="preview-panel">
-        <p className="eyebrow">Result Preview</p>
-        <h1>詳細レポートを作成できます</h1>
-        <p className="preview-summary">{diagnosis.summary}</p>
-        <div className="preview-stats">
-          <div className="preview-maturity-stat">
-            <span>総合判定</span>
-            <strong>{maturityLabel(diagnosis)}</strong>
-            <MaturityIndicator diagnosis={diagnosis} compact />
-          </div>
+    <motion.main className="lead-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+      <section className="lead-preview">
+        <p className="eyebrow">Report Ready</p>
+        <h1>15問の回答が揃いました</h1>
+        <p>
+          診断レポートは生成済みです。入力後に、総合成熟度、領域別スコア、次に取り組むべき5つのアクションを表示します。
+        </p>
+        <div className="report-ready-panel">
           <div>
-            <span>診断の方向性</span>
-            <strong>{diagnosisActionLabel(diagnosis)}</strong>
-            <em>{diagnosis.overallStage.summary}</em>
+            <Check size={18} />
+            <span>診断マップ完成</span>
+            <strong>{managementLevelName(diagnosis.overallStage.key)}</strong>
           </div>
-          <div>
-            <span>{pocThemeLabel(diagnosis)}（PoC案）</span>
-            <strong>{pocThemeValue(diagnosis, pocCandidates.length)}</strong>
-            <em>{pocThemeHelp(diagnosis)}</em>
-          </div>
+          <ProgressQuestMap answers={answers} />
         </div>
-        <StageDistribution diagnosis={diagnosis} compact />
-        <div className="diagnosis-preview-list">
-          {diagnosis.topCategories.slice(0, 3).map((category) => (
-            <div key={category.categoryId} className={stageClassName(category.maturityStage.key)}>
-              <span>{category.categoryName}</span>
-              <div className="priority-stack">
-                <strong>{category.maturityStage.label}</strong>
-                <em>{category.maturityStage.actionTone}</em>
-              </div>
-            </div>
-          ))}
+        <div className="report-preview-grid">
+          <article>
+            <span><Sparkles size={18} /></span>
+            <strong>{managementLevelName(diagnosis.overallStage.key)}</strong>
+            <p>経営管理レベル</p>
+          </article>
+          <article>
+            <span><BarChart3 size={18} /></span>
+            <strong>3ラウンド</strong>
+            <p>基本・応用・AIのスコア</p>
+          </article>
+          <article>
+            <span><ClipboardList size={18} /></span>
+            <strong>5アクション</strong>
+            <p>領域ごとの次の一手</p>
+          </article>
         </div>
-        <div className="candidate-preview">
-          {pocCandidates.map((item) => (
-            <SmallCandidate key={item.id} item={item} />
-          ))}
-        </div>
-        <p className="diagnosis-note">{MATURITY_FRAME_HELP}</p>
-      </div>
-
-      <div className="report-depth-cue" aria-label="送信後に確認できる詳細レポート">
-        <div className="depth-cue-copy">
-          <p className="eyebrow">Full Report</p>
-          <h2>入力後に、アクション付きの詳細レポートを表示します</h2>
-          <p>プレビューは要点だけです。次の画面では、10領域の判定、優先整備領域、領域別の次アクション、初回PoC候補まで整理して表示します。</p>
-        </div>
-        <div className="depth-report-visual" aria-hidden="true">
-          <motion.div
-            className="depth-arrow"
-            style={{ x: "-50%", rotate: 90 }}
-            animate={shouldReduceMotion ? undefined : { y: [0, 7, 0] }}
-            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
-          >
-            <ArrowRight size={20} />
-          </motion.div>
-          <div className="depth-report-card score-map">
-            <span>10領域の成熟度</span>
-            <strong>未熟・標準・先進で整理</strong>
-            <div className="depth-stage-bars">
-              {stageCountItems(diagnosis).map((item) => (
-                <i className={stageClassName(item.key)} key={item.key}>
-                  {item.label} {item.count}
-                </i>
-              ))}
-            </div>
+        {firstAction && (
+          <div className="first-action-preview">
+            <span>最初の推奨アクション</span>
+            <strong>{firstAction.domainName}</strong>
+            <p>{firstAction.title}</p>
           </div>
-          <div className="depth-report-card">
-            <span>優先整備領域</span>
-            <strong>上位3領域</strong>
-          </div>
-          <div className="depth-report-card">
-            <span>{pocThemeLabel(diagnosis)}</span>
-            <strong>{pocThemeValue(diagnosis, pocCandidates.length)}</strong>
-          </div>
-          <div className="depth-report-card">
-            <span>次アクション</span>
-            <strong>領域別に提示</strong>
-          </div>
-        </div>
-      </div>
+        )}
+      </section>
 
       <form className="lead-form" onSubmit={onSubmit}>
-        <p className="eyebrow">Create Report</p>
-        <h2>詳細レポートを表示する</h2>
+        <div className="form-title">
+          <LockKeyhole size={20} />
+          <div>
+            <p className="eyebrow">Create Report</p>
+            <h2>詳細レポートを表示する</h2>
+          </div>
+        </div>
         <div className="form-grid">
           <label>
             会社名
@@ -1454,408 +852,395 @@ function LeadGateScreen({
             <input type="email" value={lead.email} onChange={(event) => onUpdate("email", event.target.value)} required />
           </label>
         </div>
-        <p className="consent-copy">入力情報と回答結果を送信し、アクション付きの診断レポートを表示します。</p>
+        <p className="consent-copy">入力情報と回答内容をもとに、アクション付きの診断レポートを表示します。</p>
         {submitError && <p className="form-error">{submitError}</p>}
         <div className="flow-actions">
           <button className="secondary-action compact" type="button" onClick={onBack}>
             <ArrowLeft size={18} />
-            戻る
+            15問目に戻る
           </button>
           <button className="primary-action compact" type="submit" disabled={submitState === "sending"}>
             <Send size={18} />
-            {submitState === "sending" ? "送信中" : "詳細レポートを見る"}
+            {submitState === "sending" ? "送信中" : "診断結果を見る"}
           </button>
         </div>
       </form>
-    </motion.section>
+    </motion.main>
   );
 }
 
-type ResultScreenProps = {
+function ResultScreen({
+  diagnosis,
+  lead,
+  submittedAt,
+  onReset
+}: {
+  diagnosis: CompletedDiagnosis;
   lead: LeadForm;
-  pocCandidates: AnalyticsItem[];
-  diagnosis: DiagnosisResult;
   submittedAt: string | null;
-  onList: () => void;
-  onCatalogGift: () => void;
   onReset: () => void;
-};
-
-function MaturityIndicator({ diagnosis, compact = false }: { diagnosis: DiagnosisResult; compact?: boolean }) {
-  const shouldReduceMotion = useReducedMotion();
-  const stageKeys = ["immature", "standard", "advanced"] as MaturityStageKey[];
-  const activeStage = diagnosis.overallStage.key;
-  const helpText = diagnosis.status === "insufficient"
-    ? "入力が少ないため、総合判定は保留です。カードと質問票の回答を増やすと判定できます。"
-    : diagnosis.overallStage.summary;
-
+}) {
   return (
-    <div
-      className={`maturity-indicator ${compact ? "is-compact" : ""} ${diagnosis.status === "insufficient" ? "is-insufficient" : ""}`}
-      aria-label={`総合判定 ${maturityLabel(diagnosis)}。${helpText}`}
-    >
-      <p>{helpText}</p>
-      <div className="maturity-stage-track" aria-hidden="true">
-        {stageKeys.map((stageKey, index) => (
-          <motion.span
-            className={`${stageClassName(stageKey)} ${activeStage === stageKey ? "is-active" : ""}`}
-            key={stageKey}
-            initial={shouldReduceMotion ? false : { opacity: 0.55, y: 5 }}
-            animate={{ opacity: activeStage === stageKey ? 1 : 0.72, y: 0 }}
-            transition={{ delay: shouldReduceMotion ? 0 : index * 0.04, duration: shouldReduceMotion ? 0 : 0.25 }}
-          >
-            {STAGE_META[stageKey].shortLabel}
-          </motion.span>
-        ))}
-      </div>
-      {diagnosis.status === "insufficient" && <small className="maturity-pending-note">判定保留</small>}
-    </div>
-  );
-}
+    <motion.main className="result-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -8 }}>
+      <section className="result-head">
+        <p className="eyebrow">Diagnostic Report</p>
+        <h1>{lead.company} 向け FP&A診断結果</h1>
+        <p>{submittedAt ? new Date(submittedAt).toLocaleString("ja-JP") : ""}</p>
+      </section>
 
-function DiagnosisVisualization({ diagnosis }: { diagnosis: DiagnosisResult }) {
-  const shouldReduceMotion = useReducedMotion();
-  const priorityIds = new Set(diagnosis.topCategories.slice(0, 3).map((category) => category.categoryId));
-  const categoriesForViz = diagnosis.categoryDiagnostics;
-  const stageKeys = ["immature", "standard", "advanced"] as MaturityStageKey[];
-
-  return (
-    <section className="diagnosis-visualization" aria-labelledby="diagnosis-viz-title">
-      <div className="viz-head">
-        <p className="eyebrow">Diagnosis Map</p>
-        <h2 id="diagnosis-viz-title">10領域の成熟度マップ</h2>
-        <p>各領域を「未熟・標準・先進」で整理します。上位カテゴリほど、先に整える価値が高い領域です。</p>
-      </div>
-      <div className="viz-axis" aria-hidden="true">
-        <span>未熟</span>
-        <span>標準</span>
-        <span>先進</span>
-      </div>
-      <div className="viz-list">
-        {categoriesForViz.map((category, index) => {
-          const isPriority = priorityIds.has(category.categoryId);
-
-          return (
-            <motion.div
-              className={`viz-row ${stageClassName(category.maturityStage.key)} ${isPriority ? "is-priority" : ""}`}
-              key={category.categoryId}
-              initial={shouldReduceMotion ? false : { opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: shouldReduceMotion ? 0 : index * 0.05, duration: shouldReduceMotion ? 0 : 0.35 }}
-            >
-              <div className="viz-row-label">
-                <span>{index + 1}</span>
-                <div>
-                  <strong>{category.categoryName}</strong>
-                  <em>{category.maturityStage.actionTone}</em>
-                </div>
-              </div>
-              <div className="viz-stage-wrap">
-                <div className="viz-stage-road" aria-label={`${category.categoryName} ${category.maturityStage.label}`}>
-                  {category.maturityStage.key === "pending" ? (
-                    <span className="stage-pending is-active">保留</span>
-                  ) : (
-                    stageKeys.map((stageKey) => (
-                      <span
-                        className={`${stageClassName(stageKey)} ${category.maturityStage.key === stageKey ? "is-active" : ""}`}
-                        key={stageKey}
-                      >
-                        {STAGE_META[stageKey].shortLabel}
-                      </span>
-                    ))
-                  )}
-                </div>
-                <div className="viz-priority-value">
-                  <strong>{category.maturityStage.label}</strong>
-                  <small>{isPriority ? "優先確認" : category.maturityStage.actionTone}</small>
-                </div>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
-type CatalogGiftScreenProps = {
-  diagnosis: DiagnosisResult;
-  pocCandidates: AnalyticsItem[];
-  onBack: () => void;
-  onReset: () => void;
-};
-
-function CatalogGiftScreen({ diagnosis, pocCandidates, onBack, onReset }: CatalogGiftScreenProps) {
-  const topCategories = diagnosis.topCategories.slice(0, 3);
-  const featuredItems = pocCandidates.slice(0, 3);
-
-  return (
-    <motion.section className="catalog-gift-screen" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
-      <div className="catalog-gift-hero">
-        <div className="catalog-gift-heading">
-          <p className="eyebrow">Analytics Catalog</p>
-          <h1 className="catalog-gift-title">
-            <span>FP&A分析カタログ：やりたいことが目で見てすぐ分かる</span>
-            <span className="catalog-gift-note">※期間限定公開になりますので閉鎖時はご容赦ください</span>
-          </h1>
+      <section className={`overall-card ${stageClass(diagnosis.overallStage.key)}`}>
+        <div className="overall-copy">
+          <span>貴社の現在地</span>
+          <h2>
+            貴社の経営管理レベルは
+            <strong>{managementLevelName(diagnosis.overallStage.key)}</strong>
+            です
+          </h2>
+          <p>{diagnosis.overallStage.summary}</p>
         </div>
+        <MaturityPyramid currentStage={diagnosis.overallStage.key} />
+      </section>
 
-        <div className="catalog-gift-copy">
-          <p>
-            お礼として、FP&Aの分析テーマを課題別・用途別に探せる分析カタログをご紹介します。
-            以下の公開リンクからカタログを確認できます。
-          </p>
-          <a className="catalog-link-status" href={ANALYTICS_CATALOG_URL} target="_blank" rel="noreferrer" aria-label="分析カタログを開く">
-            <ExternalLink size={18} />
-            <span>分析カタログを開く</span>
-            <strong>{ANALYTICS_CATALOG_URL}</strong>
-          </a>
-          <div className="flow-actions">
-            <button className="secondary-action compact" type="button" onClick={onBack}>
-              <ArrowLeft size={18} />
-              診断レポートに戻る
-            </button>
-          </div>
+      <section className="result-section">
+        <div className="result-section-title">
+          <h2>ラウンド別スコア</h2>
+          <p>基本が弱い場合は基礎整備段階、基本が整い応用が弱い場合は標準運用段階、応用まで整いAIが弱い場合は高度運用段階として判定します。</p>
         </div>
+        <RoundJourneyChart diagnosis={diagnosis} />
+      </section>
 
-        <div className="catalog-showcase" aria-label="分析カタログの概要">
-          <div className="catalog-window-bar">
-            <span />
-            <span />
-            <span />
-            <strong>FP&A Analytics Catalog</strong>
-          </div>
-          <div className="catalog-window-body">
-            <div className="catalog-search-row">
-              <span>課題から探す</span>
-              <span>検証テーマ</span>
-              <span>必要データ</span>
-            </div>
-            <div className="catalog-window-grid">
-              {featuredItems.map((item) => {
-                const category = categoryById[item.category];
-                return (
-                  <article key={item.id} style={{ "--accent": category.accent } as React.CSSProperties}>
-                    <div dangerouslySetInnerHTML={{ __html: chartSvg(item.chart, item.title, category.accent) }} />
-                    <span>{category.name}</span>
-                    <strong>{item.title}</strong>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
+      <section className="result-section">
+        <div className="result-section-title">
+          <h2>領域別スコア</h2>
+          <p>5領域のスコアをレーダーチャートで見ます。外側に近いほど、その領域の基本・応用・AIが揃っています。</p>
         </div>
-      </div>
+        <DomainRadarChart diagnosis={diagnosis} />
+      </section>
 
-      <div className="catalog-feature-grid">
-        <article>
-          <span><Target size={18} /></span>
-          <h2>課題起点で探せる</h2>
-          <p>売上成長、収益性、キャッシュ、予算、リスクなど、経営管理の論点から分析テーマを選べます。</p>
-        </article>
-        <article>
-          <span><Layers3 size={18} /></span>
-          <h2>分析の型を比較できる</h2>
-          <p>必要データ、意思決定、検証の型を並べ、次に試す分析を検討しやすくしています。</p>
-        </article>
-        <article>
-          <span><ClipboardList size={18} /></span>
-          <h2>診断結果とつながる</h2>
-          <p>今回の診断で見えた重点カテゴリから、関連する分析候補へ進める設計です。</p>
-        </article>
-      </div>
-
-      <section className="catalog-diagnosis-bridge" aria-labelledby="catalog-bridge-title">
-        <div>
-          <p className="eyebrow">Recommended Entry</p>
-          <h2 id="catalog-bridge-title">今回の診断から見る入口</h2>
-          <p>着手判断が早い領域を、カタログで最初に確認するテーマとして整理しました。</p>
+      <section className="result-section">
+        <div className="result-section-title">
+          <h2>次に取り組むべき5つのアクション</h2>
+          <p>基本・応用・AIの順にボトルネックを見て、5領域それぞれに1つずつアクションを出しています。</p>
         </div>
-        <div className="catalog-topic-list">
-          {topCategories.map((category, index) => (
-            <article key={category.categoryId}>
-              <span>{index + 1}</span>
+        <div className="action-list">
+          {diagnosis.recommendedActions.map((action) => (
+            <article key={action.domainId} style={{ "--accent": action.accent } as CSSProperties}>
+              <span>{action.priority}</span>
               <div>
-                <h3>{category.categoryName}</h3>
-                <p>判定 {category.maturityStage.label} / {category.maturityStage.actionTone}</p>
+                <p>{action.domainName} / {action.round === "maintain" ? "横展開" : roundByKey[action.round].label}</p>
+                <h3>{action.title}</h3>
+                <strong>{action.action}</strong>
+                <em>{action.reason}</em>
               </div>
             </article>
           ))}
         </div>
       </section>
 
-      <div className="catalog-preview-grid">
-        {featuredItems.map((item) => {
-          const category = categoryById[item.category];
-          return (
-            <article className="catalog-preview-card" key={item.id} style={{ "--accent": category.accent } as React.CSSProperties}>
-              <span>{category.name}</span>
-              <h2>{item.title}</h2>
-              <p>{item.decision}</p>
-              <dl>
-                <div>
-                  <dt>確認するデータ</dt>
-                  <dd>{item.data}</dd>
-                </div>
-                <div>
-                  <dt>検証の型</dt>
-                  <dd>{category.poc}</dd>
-                </div>
-              </dl>
-            </article>
-          );
-        })}
-      </div>
-
-      <div className="flow-actions">
-        <button className="secondary-action compact" type="button" onClick={onBack}>
-          <ArrowLeft size={18} />
-          診断レポートに戻る
-        </button>
-        <button className="primary-action compact" type="button" onClick={onReset}>
-          <Mail size={18} />
-          新しく診断する
-        </button>
-      </div>
-    </motion.section>
-  );
-}
-
-function ResultScreen({ lead, pocCandidates, diagnosis, submittedAt, onList, onCatalogGift, onReset }: ResultScreenProps) {
-  return (
-    <motion.section className="result-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-      <div className="result-head">
-        <p className="eyebrow">Diagnostic Report</p>
-        <h1>{lead.company} 向け FP&A初期診断</h1>
-        <p>{submittedAt ? new Date(submittedAt).toLocaleString("ja-JP") : ""}</p>
-      </div>
-
-      <div className="diagnosis-overview">
-        <article className={`maturity-card ${diagnosis.status === "insufficient" ? "is-warning" : ""}`}>
-          <span>いまの状態</span>
-          <h2>{maturityLabel(diagnosis)}</h2>
-          <p>{diagnosis.summary}</p>
-          <MaturityIndicator diagnosis={diagnosis} />
-          <StageDistribution diagnosis={diagnosis} compact />
-        </article>
-        <article className="diagnosis-evidence">
-          <h2>入力から分かったこと</h2>
-          <ul>
-            {diagnosis.evidence.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-          <p>{MATURITY_FRAME_HELP}</p>
-        </article>
-      </div>
-
-      <DiagnosisVisualization diagnosis={diagnosis} />
-
-      <div className="result-section-title">
-        <h2>優先整備領域トップ3</h2>
-        <p>課題カードと質問票回答を合わせて、先に整える価値が高い領域を並べています。</p>
-      </div>
-      <div className="diagnosis-card-grid">
-        {diagnosis.topCategories.map((category) => (
-          <article className={`diagnosis-category-card ${stageClassName(category.maturityStage.key)}`} key={category.categoryId}>
-            <div className="category-card-head">
-              <span>{category.maturityStage.actionTone}</span>
-              <strong>{category.maturityStage.label}</strong>
-            </div>
-            <h3>{category.categoryName}</h3>
-            <p>{category.reason}</p>
-            <dl>
-              <div>
-                <dt>次にやること</dt>
-                <dd>{category.recommendedAction}</dd>
-              </div>
-              <div>
-                <dt>確認すること</dt>
-                <dd>{category.nextCheck}</dd>
-              </div>
-            </dl>
-            <div className="first-action">
-              <span>初回PoC候補</span>
-              <p>{category.pocTheme}</p>
-            </div>
-          </article>
-        ))}
-      </div>
-
-      <div className="result-section-title">
-        <h2>10領域別の次アクション</h2>
-        <p>すべての領域について、次に確認すべき観点を短く整理しています。</p>
-      </div>
-      <div className="action-roadmap">
-        {diagnosis.categoryDiagnostics.map((category) => (
-          <article className={stageClassName(category.maturityStage.key)} key={category.categoryId}>
-            <div>
-              <span>{category.maturityStage.label}</span>
-              <h3>{category.categoryName}</h3>
-            </div>
-            <p>{category.recommendedAction}</p>
-          </article>
-        ))}
-      </div>
-
-      <div className="result-section-title">
-        <h2>{pocThemeLabel(diagnosis)}（PoC案）</h2>
-        <p>{pocThemeHelp(diagnosis)}</p>
-      </div>
-      <div className="poc-grid">
-        {pocCandidates.map((item, index) => {
-          const category = categoryById[item.category];
-          return (
-            <article className="poc-card" key={item.id} style={{ "--accent": category.accent } as React.CSSProperties}>
-              <span>検証テーマ {index + 1}</span>
-              <h2>{item.title}</h2>
-              <p>{item.decision}</p>
-              <dl>
-                <div>
-                  <dt>必要データ</dt>
-                  <dd>{item.data}</dd>
-                </div>
-                <div>
-                  <dt>検証の型</dt>
-                  <dd>{category.poc}</dd>
-                </div>
-              </dl>
-            </article>
-          );
-        })}
-      </div>
-
-      <div className="next-check-panel">
-        <h2>次に確認すること</h2>
-        <ul>
-          {diagnosis.nextChecks.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      </div>
-
-      <div className="catalog-thanks-cta">
+      <section className="catalog-gift">
         <div>
-          <p className="eyebrow">Thank You Gift</p>
-          <h2>診断完了のお礼に、FP&A主要分析カタログをご紹介します</h2>
-          <p>FP&Aで検討できる分析テーマを、課題別・用途別に探せる公開カタログを用意しています。</p>
+          <p className="eyebrow">Gift URL</p>
+          <h2>診断完了のプレゼント</h2>
+          <p>FP&Aで検討できる分析テーマを後から見返せるよう、カタログURLをお渡しします。</p>
+          <a href={ANALYTICS_CATALOG_URL} target="_blank" rel="noreferrer">
+            <ExternalLink size={18} />
+            <span>{ANALYTICS_CATALOG_URL}</span>
+          </a>
         </div>
-        <button className="primary-action compact" type="button" onClick={onCatalogGift}>
-          <Sparkles size={18} />
-          カタログリンクを見る
-        </button>
-      </div>
-      <div className="flow-actions">
-        <button className="secondary-action compact" type="button" onClick={onList}>
-          <ListChecks size={18} />
-          一覧を見る
-        </button>
+        <Sparkles size={38} aria-hidden="true" />
+      </section>
+
+      <div className="flow-actions result-actions">
         <button className="secondary-action compact" type="button" onClick={onReset}>
           <Mail size={18} />
           新しく診断する
         </button>
       </div>
-    </motion.section>
+    </motion.main>
+  );
+}
+
+function MaturityPyramid({ currentStage }: { currentStage: MaturityStageKey }) {
+  const levels: Array<{ key: MaturityStageKey; short: string; caption: string; width: string }> = [
+    { key: "frontier", short: "先端活用", caption: "AIまで活用できている", width: "58%" },
+    { key: "advanced", short: "高度運用", caption: "応用まで整っている", width: "72%" },
+    { key: "standard", short: "標準運用", caption: "基本が回っている", width: "86%" },
+    { key: "immature", short: "基礎整備", caption: "まず土台を整える", width: "100%" }
+  ];
+
+  return (
+    <motion.div
+      className="maturity-pyramid"
+      aria-label={`貴社の現在地は${managementLevelName(currentStage)}です`}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+    >
+      <span className="pyramid-label">貴社の現在地</span>
+      {levels.map((level) => {
+        const levelIndex = levels.findIndex((item) => item.key === level.key);
+        const isActive = currentStage === level.key;
+        return (
+          <motion.div
+            className={`maturity-pyramid-row ${stageClass(level.key)} ${isActive ? "is-active" : ""}`}
+            key={level.key}
+            style={{ "--level-width": level.width } as CSSProperties}
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            whileHover={{ y: -2, scale: isActive ? 1.012 : 1.006 }}
+            transition={{ type: "spring", stiffness: 260, damping: 24, delay: levelIndex * 0.08 }}
+          >
+            <div>
+              <strong>{level.short}</strong>
+              <small>{level.caption}</small>
+            </div>
+            {isActive && (
+              <motion.em initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.36 }}>
+                現在地
+              </motion.em>
+            )}
+          </motion.div>
+        );
+      })}
+    </motion.div>
+  );
+}
+
+function RoundJourneyChart({ diagnosis }: { diagnosis: CompletedDiagnosis }) {
+  const roundMeta: Record<RoundLevelKey, { tone: string; note: string }> = {
+    basic: {
+      tone: "#2f766d",
+      note: "数字を揃え、差を説明し、会議で使える状態"
+    },
+    applied: {
+      tone: "#4e6e94",
+      note: "現場の動き、見通し、要因分解へつなぐ状態"
+    },
+    ai: {
+      tone: "#6b5d88",
+      note: "AIが検知、下書き、提案を支援する状態"
+    }
+  };
+
+  return (
+    <div className="round-journey" aria-label="基本、応用、AIのラウンド別スコア">
+      <svg className="round-journey-line" viewBox="0 0 600 120" aria-hidden="true">
+        <path d="M70 60 C170 8 230 112 300 60 S430 8 530 60" fill="none" stroke="#d7ded7" strokeWidth="10" strokeLinecap="round" />
+        <motion.path
+          d="M70 60 C170 8 230 112 300 60 S430 8 530 60"
+          fill="none"
+          stroke="#2f766d"
+          strokeWidth="10"
+          strokeLinecap="round"
+          initial={{ pathLength: 0 }}
+          animate={{ pathLength: 1 }}
+          transition={{ duration: 1.2, ease: "easeInOut" }}
+        />
+      </svg>
+      <div className="round-journey-cards">
+        {diagnosis.roundDiagnostics.map((round, index) => {
+          const ratio = round.score / round.maxScore;
+          const percent = Math.round(ratio * 100);
+          const meta = roundMeta[round.round];
+
+          return (
+            <motion.article
+              key={round.round}
+              className="round-journey-card"
+              style={{ "--round-accent": meta.tone, "--round-percent": `${percent}%` } as CSSProperties}
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.38, delay: index * 0.12 }}
+            >
+              <motion.div
+                className="round-orb"
+                initial={{ scale: 0.72 }}
+                animate={{ scale: 1 }}
+                transition={{ duration: 0.45, delay: 0.24 + index * 0.1 }}
+              >
+                <span>{index + 1}</span>
+              </motion.div>
+              <div>
+                <span>{round.label}</span>
+                <strong>{round.score} / {round.maxScore}</strong>
+                <p>{meta.note}</p>
+                <div className="round-motion-bar">
+                  <motion.i
+                    initial={{ width: 0 }}
+                    animate={{ width: `${percent}%` }}
+                    transition={{ duration: 0.7, delay: 0.34 + index * 0.12, ease: "easeOut" }}
+                  />
+                </div>
+              </div>
+            </motion.article>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DomainRadarChart({ diagnosis }: { diagnosis: CompletedDiagnosis }) {
+  const shouldReduceMotion = useReducedMotion();
+  const size = 320;
+  const center = size / 2;
+  const radius = 112;
+  const domainsForRadar = diagnosis.domainDiagnostics;
+  const maxRadarScore = domainsForRadar[0]?.maxScore ?? 6;
+  const gridLevels = [maxRadarScore / 3, (maxRadarScore / 3) * 2, maxRadarScore];
+  const pointFor = (index: number, value: number, maxValue = maxRadarScore) => {
+    const angle = -Math.PI / 2 + (index / domainsForRadar.length) * Math.PI * 2;
+    const distance = radius * (value / maxValue);
+    return {
+      x: center + Math.cos(angle) * distance,
+      y: center + Math.sin(angle) * distance
+    };
+  };
+  const polygonPoints = domainsForRadar.map((domain, index) => {
+    const point = pointFor(index, domain.totalScore, domain.maxScore);
+    return `${point.x},${point.y}`;
+  }).join(" ");
+  const firstRadarPoint = domainsForRadar[0] ? pointFor(0, domainsForRadar[0].totalScore, domainsForRadar[0].maxScore) : { x: center, y: center };
+  const radarOutlinePoints = `${polygonPoints} ${firstRadarPoint.x},${firstRadarPoint.y}`;
+  const scanPath = [
+    `M ${center} ${center}`,
+    `L ${center} ${center - radius}`,
+    `A ${radius} ${radius} 0 0 1 ${center + 76} ${center - 82}`,
+    "Z"
+  ].join(" ");
+  const labelPoints = domainsForRadar.map((domain, index) => ({
+    domain,
+    ...pointFor(index, maxRadarScore * 1.2, maxRadarScore)
+  }));
+
+  return (
+    <div className="radar-panel">
+      <div className="radar-chart-wrap">
+        <svg className="radar-chart" viewBox={`0 0 ${size} ${size}`} role="img" aria-label="5領域の領域別スコアを示すレーダーチャート">
+          {gridLevels.map((level, index) => (
+            <motion.polygon
+              className="radar-grid"
+              key={level}
+              points={domainsForRadar.map((_, index) => {
+                const point = pointFor(index, level, maxRadarScore);
+                return `${point.x},${point.y}`;
+              }).join(" ")}
+              initial={{ opacity: 0, scale: 0.86 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.45, delay: index * 0.08, ease: "easeOut" }}
+              style={{ transformOrigin: `${center}px ${center}px` }}
+            />
+          ))}
+          {domainsForRadar.map((domain, index) => {
+            const point = pointFor(index, maxRadarScore, maxRadarScore);
+            return (
+              <motion.line
+                className="radar-axis"
+                key={domain.domainId}
+                x1={center}
+                y1={center}
+                x2={point.x}
+                y2={point.y}
+                initial={{ pathLength: 0, opacity: 0 }}
+                animate={{ pathLength: 1, opacity: 1 }}
+                transition={{ duration: 0.48, delay: 0.18 + index * 0.06, ease: "easeOut" }}
+              />
+            );
+          })}
+          <g className="radar-scan">
+            <path className="radar-scan-fill" d={scanPath} />
+            <line className="radar-scan-line" x1={center} y1={center} x2={center} y2={center - radius} />
+          </g>
+          <motion.polygon
+            className="radar-shape"
+            points={polygonPoints}
+            initial={{ opacity: 0, scale: 0.72 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.75, ease: "easeOut" }}
+          />
+          <motion.polyline
+            className="radar-sweep"
+            points={radarOutlinePoints}
+            initial={{ pathLength: 0 }}
+            animate={shouldReduceMotion ? { pathLength: 1, opacity: 0.46 } : { pathLength: [0, 1, 1], opacity: [0.2, 0.82, 0.36] }}
+            transition={shouldReduceMotion ? { duration: 0.6, delay: 0.22 } : { duration: 2.8, ease: "easeInOut", delay: 0.22, repeat: Infinity, repeatDelay: 0.65 }}
+          />
+          <motion.circle
+            className="radar-center-pulse"
+            cx={center}
+            cy={center}
+            r="4"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={shouldReduceMotion ? { opacity: 0.18, scale: 1 } : { opacity: [0.34, 0.08, 0.34], scale: [0.9, 2.4, 0.9] }}
+            transition={shouldReduceMotion ? { duration: 0.35 } : { duration: 2.6, ease: "easeInOut", repeat: Infinity }}
+          />
+          {domainsForRadar.map((domain, index) => {
+            const point = pointFor(index, domain.totalScore, domain.maxScore);
+            return (
+              <g className="radar-point" key={domain.domainId}>
+                <motion.circle
+                  className="radar-dot-pulse"
+                  cx={point.x}
+                  cy={point.y}
+                  r="7"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={shouldReduceMotion ? { opacity: 0.18, scale: 1 } : { opacity: [0.32, 0, 0.32], scale: [0.75, 1.9, 0.75] }}
+                  transition={shouldReduceMotion ? { duration: 0.3, delay: 0.55 + index * 0.08 } : { duration: 2.4, delay: 0.7 + index * 0.18, repeat: Infinity, ease: "easeInOut" }}
+                />
+                <motion.circle
+                  className="radar-dot"
+                  cx={point.x}
+                  cy={point.y}
+                  r="6"
+                  initial={{ opacity: 0, scale: 0 }}
+                  animate={shouldReduceMotion ? { opacity: 1, scale: 1 } : { opacity: 1, scale: [1, 1.12, 1] }}
+                  transition={shouldReduceMotion ? { duration: 0.28, delay: 0.55 + index * 0.08 } : { duration: 1.8, delay: 0.55 + index * 0.08, repeat: Infinity, repeatDelay: 0.8, ease: "easeInOut" }}
+                />
+              </g>
+            );
+          })}
+          {labelPoints.map(({ domain, x, y }) => (
+            <text className="radar-label" key={domain.domainId} x={x} y={y} textAnchor="middle" dominantBaseline="middle">
+              {domain.shortName}
+            </text>
+          ))}
+        </svg>
+      </div>
+      <aside className="radar-breakdown" aria-label="領域別スコアの内訳">
+        <div className="radar-breakdown-head">
+          <span>領域別の内訳</span>
+          <p>合計点と、基本・応用・AIの3段階を領域ごとに表示しています。</p>
+        </div>
+        <div className="radar-score-list">
+          {domainsForRadar.map((domain) => {
+            const scorePercent = domain.maxScore > 0 ? Math.round((domain.totalScore / domain.maxScore) * 100) : 0;
+            return (
+              <article
+                className={stageClass(domain.maturityStage.key)}
+                key={domain.domainId}
+                style={{ "--accent": domain.accent, "--score-width": `${scorePercent}%` } as CSSProperties}
+              >
+                <div className="domain-score-main">
+                  <div className="domain-score-head">
+                    <span>{managementLevelShortName(domain.maturityStage.key)}</span>
+                    <strong>{domain.domainName}</strong>
+                  </div>
+                  <p>{domain.totalScore}<small>/ {domain.maxScore}</small></p>
+                </div>
+                <div className="domain-score-bar" aria-label={`${domain.domainName}の合計スコアは${domain.totalScore}点中${domain.maxScore}点です`}>
+                  <i />
+                </div>
+                <div className="domain-round-mini" aria-label={`${domain.domainName}のラウンド別内訳`}>
+                  <i><span>基本</span><strong>{domain.basicScore}</strong></i>
+                  <i><span>応用</span><strong>{domain.appliedScore}</strong></i>
+                  <i><span>AI</span><strong>{domain.aiScore}</strong></i>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </aside>
+    </div>
   );
 }
 
