@@ -2464,7 +2464,7 @@ p {
 
 @page {
   size: A4;
-  margin: 12mm;
+  margin: 13mm 12mm;
 }
 
 @media print {
@@ -2476,10 +2476,24 @@ p {
   body {
     color: #111719;
     background: #fff !important;
+    font-size: 10.5pt;
+    line-height: 1.42;
+  }
+
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  p,
+  li {
+    orphans: 3;
+    widows: 3;
   }
 
   .topbar,
   .answer-feedback,
+  .floating-cta-hint,
   .no-print,
   .catalog-gift {
     display: none !important;
@@ -2490,19 +2504,70 @@ p {
   }
 
   .result-screen {
+    display: block;
     width: 100% !important;
     max-width: none !important;
-    gap: 14px;
     padding: 0 !important;
   }
 
   .result-head {
     display: block;
+    margin-bottom: 6mm;
+    padding-bottom: 4mm;
+    border-bottom: 1px solid #d7ded7;
     break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .result-head .eyebrow {
+    margin-bottom: 2mm;
   }
 
   .result-head h1 {
-    font-size: 26px;
+    margin: 0;
+    font-size: 20pt;
+    line-height: 1.18;
+  }
+
+  .result-head p:last-child {
+    margin: 2mm 0 0;
+  }
+
+  .result-section {
+    margin-top: 6mm;
+  }
+
+  .result-section-title {
+    margin-bottom: 3mm;
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  .result-section-title h2 {
+    font-size: 16pt;
+  }
+
+  .result-section-title p {
+    max-width: none;
+    margin-top: 1.5mm;
+    font-size: 9.5pt;
+  }
+
+  .radar-print-section,
+  .actions-print-section {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .overall-card,
+  .round-journey,
+  .round-journey-card,
+  .radar-chart-wrap,
+  .radar-breakdown,
+  .maturity-pyramid,
+  .result-section-title {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 
   .overall-card,
@@ -2512,28 +2577,155 @@ p {
   .radar-breakdown,
   .action-list article,
   .maturity-pyramid {
-    break-inside: avoid;
     box-shadow: none !important;
   }
 
-  .overall-card,
-  .radar-panel {
-    grid-template-columns: 1fr;
+  .overall-card {
+    grid-template-columns: minmax(0, 1.15fr) minmax(58mm, 0.85fr);
+    gap: 6mm;
+    align-items: center;
+    margin-bottom: 6mm;
+    padding: 6mm;
+    border-top-width: 2.2mm;
   }
 
-  .round-journey-cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .overall-card h2 {
+    margin: 2mm 0 3mm;
+    font-size: 18pt;
+  }
+
+  .overall-card p {
+    font-size: 10pt;
+  }
+
+  .maturity-pyramid {
+    gap: 2mm;
+    padding: 4mm;
+  }
+
+  .maturity-pyramid::before {
+    display: none;
+  }
+
+  .maturity-pyramid-row {
+    min-height: 11mm;
+    padding: 2mm 5mm;
+  }
+
+  .maturity-pyramid-row strong {
+    font-size: 10pt;
+  }
+
+  .maturity-pyramid-row small,
+  .maturity-pyramid-row em {
+    font-size: 8pt;
+  }
+
+  .round-journey {
+    overflow: visible;
+    padding: 5mm;
   }
 
   .round-journey-line {
     display: none;
   }
 
-  .radar-scan,
-  .radar-shape,
-  .maturity-pyramid-row.is-active,
-  .maturity-pyramid-row.is-active::after {
-    animation: none !important;
+  .round-journey-cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4mm;
+  }
+
+  .round-journey-card {
+    gap: 3mm;
+    padding: 4mm;
+  }
+
+  .round-orb {
+    width: 13mm;
+    height: 13mm;
+  }
+
+  .round-orb span {
+    width: 8mm;
+    height: 8mm;
+    font-size: 8pt;
+  }
+
+  .round-journey-card strong {
+    font-size: 18pt;
+  }
+
+  .round-journey-card p {
+    margin: 2mm 0;
+    font-size: 9pt;
+  }
+
+  .radar-panel {
+    grid-template-columns: 74mm minmax(0, 1fr);
+    gap: 6mm;
+    align-items: start;
+  }
+
+  .radar-chart-wrap {
+    min-height: 74mm;
+    padding: 4mm;
+  }
+
+  .radar-chart {
+    width: 70mm;
+  }
+
+  .radar-breakdown {
+    gap: 2mm;
+    padding: 4mm;
+  }
+
+  .radar-score-list article {
+    grid-template-columns: minmax(0, 1fr) 18mm;
+    gap: 2mm;
+    padding: 2mm 0 2mm 2.5mm;
+  }
+
+  .domain-score-bar,
+  .domain-round-mini {
+    display: none;
+  }
+
+  .radar-score-list article p {
+    font-size: 13pt;
+  }
+
+  .action-list {
+    gap: 4mm;
+  }
+
+  .action-list article {
+    grid-template-columns: 10mm minmax(0, 1fr);
+    gap: 4mm;
+    padding: 4.5mm;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .action-list article > span {
+    width: 9mm;
+    height: 9mm;
+    font-size: 9pt;
+  }
+
+  .action-list h3 {
+    margin: 1mm 0 2mm;
+    font-size: 14pt;
+  }
+
+  .action-list strong {
+    font-size: 10pt;
+    line-height: 1.45;
+  }
+
+  .action-list em {
+    margin-top: 2mm;
+    font-size: 9pt;
   }
 
   a[href]::after {

@@ -844,7 +844,7 @@ function ResultScreen({
         </button>
       </section>
 
-      <section className={`overall-card ${stageClass(diagnosis.overallStage.key)}`}>
+      <section className={`overall-card print-summary-card ${stageClass(diagnosis.overallStage.key)}`}>
         <div className="overall-copy">
           <span>貴社の現在地</span>
           <h2>
@@ -857,7 +857,7 @@ function ResultScreen({
         <MaturityPyramid currentStage={diagnosis.overallStage.key} />
       </section>
 
-      <section className="result-section">
+      <section className="result-section round-print-section">
         <div className="result-section-title">
           <h2>ラウンド別スコア</h2>
           <p>基本が弱い場合は基礎整備段階、基本が整い応用が弱い場合は標準運用段階、応用まで整いAIが弱い場合は高度運用段階として判定します。</p>
@@ -865,7 +865,7 @@ function ResultScreen({
         <RoundJourneyChart diagnosis={diagnosis} />
       </section>
 
-      <section className="result-section">
+      <section className="result-section radar-print-section">
         <div className="result-section-title">
           <h2>領域別スコア</h2>
           <p>5領域のスコアをレーダーチャートで見ます。外側に近いほど、その領域の基本・応用・AIが揃っています。</p>
@@ -873,7 +873,7 @@ function ResultScreen({
         <DomainRadarChart diagnosis={diagnosis} />
       </section>
 
-      <section className="result-section">
+      <section className="result-section actions-print-section">
         <div className="result-section-title">
           <h2>次に取り組むべき5つのアクション</h2>
           <p>基本・応用・AIの順にボトルネックを見て、5領域それぞれに1つずつアクションを出しています。</p>
