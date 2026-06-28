@@ -710,12 +710,14 @@ function DeckScreen({ question, answer, answers, progress, roundIndex, canGoBack
         </div>
       </section>
 
-      <div className="deck-back-corner">
-        <button className="card-back-action" type="button" onClick={onBackOne} disabled={!canGoBack}>
-          <ArrowLeft size={15} />
-          1問戻る
-        </button>
-      </div>
+      {canGoBack && (
+        <div className="deck-back-corner">
+          <button className="card-back-action" type="button" onClick={onBackOne}>
+            <ArrowLeft size={15} />
+            1問戻る
+          </button>
+        </div>
+      )}
 
       <aside className="progress-panel" aria-label="回答進捗">
         <span>進捗</span>
