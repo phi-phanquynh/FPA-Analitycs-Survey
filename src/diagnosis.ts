@@ -14,9 +14,17 @@ import type {
 
 const ROUND_MAX_SCORE = 10;
 const DOMAIN_MAX_SCORE = 6;
-const ROUND_READY_SCORE = 8;
-const LEVEL_READY_SCORE = 2;
 const ANSWER_MAX_SCORE = 2;
+const OVERALL_BASIC_FLOOR_SCORE = 5;
+const OVERALL_STANDARD_TOTAL_SCORE = 12;
+const OVERALL_ADVANCED_TOTAL_SCORE = 18;
+const OVERALL_FRONTIER_TOTAL_SCORE = 24;
+const OVERALL_ADVANCED_BASIC_SCORE = 6;
+const OVERALL_ADVANCED_APPLIED_SCORE = 5;
+const OVERALL_FRONTIER_BASIC_SCORE = 7;
+const OVERALL_FRONTIER_APPLIED_SCORE = 7;
+const OVERALL_FRONTIER_AI_SCORE = 6;
+const DOMAIN_FRONTIER_TOTAL_SCORE = 5;
 
 const roundOrder: RoundLevelKey[] = ["basic", "applied", "ai"];
 const roundPriority: Record<RoundLevelKey, number> = { basic: 3, applied: 2, ai: 1 };
@@ -52,22 +60,40 @@ function scoreOf(answer: AnswerValue | undefined) {
   return answer ? answerOptionByValue[answer].score : 0;
 }
 
-function isLevelReady(score: number) {
-  return score >= LEVEL_READY_SCORE;
-}
-
 function stageFromRoundScores(scores: Record<RoundLevelKey, number>) {
-  if (scores.basic < ROUND_READY_SCORE) return maturityStages.immature;
-  if (scores.applied < ROUND_READY_SCORE) return maturityStages.standard;
-  if (scores.ai < ROUND_READY_SCORE) return maturityStages.advanced;
-  return maturityStages.frontier;
+  const totalScore = scores.basic + scores.applied + scores.ai;
+
+  if (scores.basic < OVERALL_BASIC_FLOOR_SCORE || totalScore < OVERALL_STANDARD_TOTAL_SCORE) {
+    return maturityStages.immature;
+  }
+
+  if (
+    totalScore >= OVERALL_FRONTIER_TOTAL_SCORE &&
+    scores.basic >= OVERALL_FRONTIER_BASIC_SCORE &&
+    scores.applied >= OVERALL_FRONTIER_APPLIED_SCORE &&
+    scores.ai >= OVERALL_FRONTIER_AI_SCORE
+  ) {
+    return maturityStages.frontier;
+  }
+
+  if (
+    totalScore >= OVERALL_ADVANCED_TOTAL_SCORE &&
+    scores.basic >= OVERALL_ADVANCED_BASIC_SCORE &&
+    scores.applied >= OVERALL_ADVANCED_APPLIED_SCORE
+  ) {
+    return maturityStages.advanced;
+  }
+
+  return maturityStages.standard;
 }
 
 function stageFromDomainScores(scores: Record<RoundLevelKey, number>) {
-  if (!isLevelReady(scores.basic)) return maturityStages.immature;
-  if (!isLevelReady(scores.applied)) return maturityStages.standard;
-  if (!isLevelReady(scores.ai)) return maturityStages.advanced;
-  return maturityStages.frontier;
+  const totalScore = scores.basic + scores.applied + scores.ai;
+
+  if (scores.basic === 0) return maturityStages.immature;
+  if (scores.applied === 0) return maturityStages.standard;
+  if (scores.ai > 0 && totalScore >= DOMAIN_FRONTIER_TOTAL_SCORE) return maturityStages.frontier;
+  return maturityStages.advanced;
 }
 
 function getAnsweredCount(answers: Record<string, AnswerValue>) {
@@ -194,7 +220,7 @@ function buildEvidence(diagnosis: CompletedDiagnosis) {
 
   return [
     `15問すべてに回答済み`,
-    `基本 ${basic}/${ROUND_MAX_SCORE}、応用 ${applied}/${ROUND_MAX_SCORE}、AI ${ai}/${ROUND_MAX_SCORE}`,
+    `基本 ${basic}pt/${ROUND_MAX_SCORE}pt、応用 ${applied}pt/${ROUND_MAX_SCORE}pt、AI ${ai}pt/${ROUND_MAX_SCORE}pt`,
     `5領域それぞれに、次に取り組むべきアクションを1つずつ提示`
   ];
 }

@@ -895,7 +895,7 @@ function ResultScreen({
       <section className="result-section round-print-section">
         <div className="result-section-title">
           <h2>ラウンド別スコア</h2>
-          <p>基本が弱い場合は基礎整備段階、基本が整い応用が弱い場合は標準運用段階、応用まで整いAIが弱い場合は高度運用段階として判定します。</p>
+          <p>基本の最低ラインと総合点を見て判定します。基本が立ち上がれば標準運用、応用まで使えていれば高度運用、AIまで高水準なら先端活用とします。</p>
         </div>
         <RoundJourneyChart diagnosis={diagnosis} />
       </section>
