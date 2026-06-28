@@ -102,7 +102,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 1,
     round: "basic",
     domainId: "data",
-    question: "経営会議で使う数字を、毎月同じ考え方で集め、担当者が違っても同じ結果になるようにできていますか？",
+    question: "経営会議で使う数字の定義が定まっており、集計担当者が違っても同じ結果になるようにできていますか？",
     examples: "売上、利益、費用、人員数、主要KPIなど",
     illustrationKey: "q1-consolidation",
     illustrationAlt: "複数の表が一つの集計表に揃っていくイラスト"
@@ -112,7 +112,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 2,
     round: "basic",
     domainId: "planning",
-    question: "月末後に実績を見て、計画との差が大きいところを見つけ、なぜずれたのかを説明できていますか？",
+    question: "月末に実績を見て、計画との差が大きいところを見つけ、なぜずれたのかを説明できていますか？",
     examples: "売上差、利益差、費用超過、人数計画との差など",
     illustrationKey: "q2-variance",
     illustrationAlt: "ずれた箇所に丸印をつけて原因を見るイラスト"
@@ -132,7 +132,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 4,
     round: "basic",
     domainId: "decision",
-    question: "会議が始まる前に必要な数字が揃い、会議中は数字探しではなく判断に時間を使えていますか？",
+    question: "会議が始まる前に必要な数字が揃い、会議は単なる数字の確認ではなく判断に時間を使えていますか？",
     examples: "実績、最新見込、予算差、重要KPIなど",
     illustrationKey: "q4-meeting-ready",
     illustrationAlt: "会議前に資料と数字が揃っているイラスト"
@@ -162,7 +162,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 7,
     round: "applied",
     domainId: "planning",
-    question: "状況が変わったときに、見通しをすぐに作り直し、今のままだと着地がどうなるか確認できていますか？",
+    question: "状況が変わったときに、見通しをすぐに作り直し、今のままだと着地がどうなるか予測できていますか？",
     examples: "受注額、販売数量、採用人数、原価変動など",
     illustrationKey: "q7-forecast-update",
     illustrationAlt: "条件変更で着地点の線が更新されるイラスト"
@@ -172,7 +172,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 8,
     round: "applied",
     domainId: "analysis",
-    question: "利益が増えた、または減った理由を、感覚ではなく数字を分けながら説明できていますか？",
+    question: "利益が増えた、または減った理由を、感覚ではなく数字を使って説明できていますか？",
     examples: "価格、数量、原価、固定費、顧客構成など",
     illustrationKey: "q8-profit-bridge",
     illustrationAlt: "利益増減が要因別に分かれるイラスト"
@@ -192,7 +192,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 10,
     round: "applied",
     domainId: "action",
-    question: "実行した施策について、やりっぱなしにせず、結果を見て次の打ち手を変えられていますか？",
+    question: "実行した施策について、やりっぱなしにせず、結果を反映して次の打ち手を変えられていますか？",
     examples: "売上増加額、費用削減額、利益改善額、KPI変化など",
     illustrationKey: "q10-action-loop",
     illustrationAlt: "結果を見て次の打ち手を変えるイラスト"
@@ -202,7 +202,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 11,
     round: "ai",
     domainId: "data",
-    question: "AIに数字を読ませたとき、意味の違う項目を取り違えないように、使うデータを整えられていますか？",
+    question: "AIに数字を読ませたとき、意味の違う項目を取り違えないように、データの定義と整備ができていますか？",
     examples: "売上、粗利、費用、人員数、KPIなど",
     illustrationKey: "q11-ai-data",
     illustrationAlt: "乱れた表がAI向けに整理されるイラスト"
@@ -222,7 +222,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 13,
     round: "ai",
     domainId: "analysis",
-    question: "人がレポートを見る前に、AIが大きな変化や気になる数字を見つけ、確認すべき点を示せていますか？",
+    question: "人がレポートを見る前に、AIが大きな変化や気になる数字を見つけ、確認すべき点を事前に示せていますか？",
     examples: "売上急減、粗利率低下、費用急増、KPI悪化など",
     illustrationKey: "q13-ai-alert",
     illustrationAlt: "AIが異常な数字をハイライトするイラスト"
@@ -232,7 +232,7 @@ export const diagnosticQuestions: DiagnosticQuestion[] = [
     order: 14,
     round: "ai",
     domainId: "decision",
-    question: "会議の準備で、AIが数字の変化を読み取り、議論すべき論点を下書きできていますか？",
+    question: "会議の準備で、AIが数字の変化を網羅的に読み取り、議論すべき論点を下書きできていますか？",
     examples: "実績と見込の差、利益悪化要因、悪化KPI、判断が必要な項目など",
     illustrationKey: "q14-ai-agenda",
     illustrationAlt: "AIが会議論点の下書きを作るイラスト"
