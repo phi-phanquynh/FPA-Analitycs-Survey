@@ -265,6 +265,10 @@ p {
 
 .home-title span {
   display: block;
+  width: fit-content;
+  max-width: 100%;
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 .home-copy p:not(.eyebrow),
@@ -688,6 +692,7 @@ p {
   white-space: normal;
   outline: 3px solid rgba(199, 146, 45, 0.24);
   outline-offset: 5px;
+  animation: start-cta-piko 2.2s ease-in-out infinite;
   box-shadow:
     0 18px 38px rgba(47, 118, 109, 0.28),
     0 0 0 8px rgba(47, 118, 109, 0.1);
@@ -735,6 +740,40 @@ p {
 .home-start-hero svg,
 .home-start-final svg {
   flex: 0 0 auto;
+}
+
+.home-start-final span,
+.home-start-final strong {
+  display: block;
+  line-height: 1.12;
+  white-space: nowrap;
+}
+
+.home-start-final strong {
+  font-size: 20px;
+}
+
+@keyframes start-cta-piko {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  12% {
+    translate: 0 -5px;
+  }
+
+  24% {
+    translate: 0 0;
+  }
+
+  36% {
+    translate: 0 -3px;
+  }
+
+  48% {
+    translate: 0 0;
+  }
 }
 
 .deck-screen {
@@ -2850,7 +2889,9 @@ p {
   .action-visual::after,
   .action-route-active,
   .action-domain-token,
-  .action-next-panel {
+  .action-next-panel,
+  .home-start-hero,
+  .home-start-final {
     animation: none;
   }
 

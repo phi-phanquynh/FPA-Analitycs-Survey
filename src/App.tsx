@@ -558,7 +558,8 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
           <div className="home-copy">
             <p className="eyebrow">FP&A Management Diagnosis</p>
             <h1 className="home-title">
-              <span>経営管理をどこまでできているか</span>
+              <span>経営管理を</span>
+              <span>どこまでできているか</span>
               <span>見える化します</span>
             </h1>
             <p>
@@ -649,7 +650,8 @@ function HomeScreen({ onStart }: { onStart: () => void }) {
 
       <section className="home-bottom-cta" aria-label="診断開始">
         <button className="primary-action home-start-final" type="button" onClick={onStart}>
-          診断を始める
+          <span>診断を</span>
+          <strong>始める</strong>
           <ArrowRight size={19} />
         </button>
       </section>
