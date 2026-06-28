@@ -162,10 +162,10 @@ function questionAnswerLines(answers: Record<string, AnswerValue>) {
 
 function generateSummaryText(diagnosis: CompletedDiagnosis, answers: Record<string, AnswerValue>, lead?: LeadForm) {
   const roundLines = diagnosis.roundDiagnostics
-    .map((round) => `・${round.label}: ${round.score}/${round.maxScore}`)
+    .map((round) => `・${round.label}: ${round.score}pt/${round.maxScore}pt`)
     .join("\n");
   const domainLines = diagnosis.domainDiagnostics
-    .map((domain) => `・${domain.domainName}: ${domain.totalScore}/${domain.maxScore} / ${managementLevelShortName(domain.maturityStage.key)}`)
+    .map((domain) => `・${domain.domainName}: ${domain.totalScore}pt/${domain.maxScore}pt / ${managementLevelShortName(domain.maturityStage.key)}`)
     .join("\n");
   const actionLines = diagnosis.recommendedActions
     .map((action) => `${action.priority}. ${action.domainName}: ${action.title}\n   ${action.action}`)
@@ -1053,7 +1053,7 @@ function RoundJourneyChart({ diagnosis }: { diagnosis: CompletedDiagnosis }) {
               </motion.div>
               <div>
                 <span>{round.label}</span>
-                <strong>{round.score} / {round.maxScore}</strong>
+                <strong>{round.score}pt / {round.maxScore}pt</strong>
                 <p>{meta.note}</p>
                 <div className="round-motion-bar">
                   <motion.i
@@ -1200,7 +1200,7 @@ function DomainRadarChart({ diagnosis }: { diagnosis: CompletedDiagnosis }) {
       <aside className="radar-breakdown" aria-label="領域別スコアの内訳">
         <div className="radar-breakdown-head">
           <span>領域別の内訳</span>
-          <p>合計点と、基本・応用・AIの3段階を領域ごとに表示しています。</p>
+          <p>合計点（pt）と、基本・応用・AIの3段階を領域ごとに表示しています。</p>
         </div>
         <div className="radar-score-list">
           {domainsForRadar.map((domain) => {
@@ -1216,9 +1216,9 @@ function DomainRadarChart({ diagnosis }: { diagnosis: CompletedDiagnosis }) {
                     <span>{managementLevelShortName(domain.maturityStage.key)}</span>
                     <strong>{domain.domainName}</strong>
                   </div>
-                  <p>{domain.totalScore}<small>/ {domain.maxScore}</small></p>
+                  <p>{domain.totalScore}pt<small> / {domain.maxScore}pt</small></p>
                 </div>
-                <div className="domain-score-bar" aria-label={`${domain.domainName}の合計スコアは${domain.totalScore}点中${domain.maxScore}点です`}>
+                <div className="domain-score-bar" aria-label={`${domain.domainName}の合計スコアは${domain.maxScore}pt中${domain.totalScore}ptです`}>
                   <i />
                 </div>
                 <div className="domain-round-mini" aria-label={`${domain.domainName}のラウンド別内訳`}>
