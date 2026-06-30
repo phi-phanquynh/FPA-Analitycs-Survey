@@ -2902,7 +2902,7 @@ p {
 
 @page {
   size: A4;
-  margin: 13mm 12mm;
+  margin: 7mm;
 }
 
 @media print {
@@ -2914,8 +2914,8 @@ p {
   body {
     color: #111719;
     background: #fff !important;
-    font-size: 10.5pt;
-    line-height: 1.42;
+    font-size: 7.7pt;
+    line-height: 1.28;
   }
 
   * {
@@ -2932,7 +2932,8 @@ p {
   .topbar,
   .answer-feedback,
   .no-print,
-  .catalog-gift {
+  .catalog-gift,
+  .result-actions {
     display: none !important;
   }
 
@@ -2941,59 +2942,66 @@ p {
   }
 
   .result-screen {
-    display: block;
+    display: grid;
+    gap: 3mm;
     width: 100% !important;
     max-width: none !important;
     padding: 0 !important;
   }
 
   .result-head {
-    display: block;
-    margin-bottom: 6mm;
-    padding-bottom: 4mm;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1mm;
+    padding-bottom: 2.2mm;
     border-bottom: 1px solid #d7ded7;
     break-after: avoid;
     page-break-after: avoid;
   }
 
   .result-head .eyebrow {
-    margin-bottom: 2mm;
+    margin-bottom: 1mm;
+    font-size: 6.8pt;
   }
 
   .result-head h1 {
     margin: 0;
-    font-size: 20pt;
-    line-height: 1.18;
+    font-size: 13.5pt;
+    line-height: 1.12;
   }
 
   .result-head p:last-child {
-    margin: 2mm 0 0;
+    margin: 1mm 0 0;
+    font-size: 7pt;
   }
 
   .result-section {
-    margin-top: 6mm;
+    margin-top: 0;
   }
 
   .result-section-title {
-    margin-bottom: 3mm;
+    margin-bottom: 1.7mm;
     break-after: avoid;
     page-break-after: avoid;
   }
 
   .result-section-title h2 {
-    font-size: 16pt;
+    margin: 0;
+    font-size: 10.5pt;
+    line-height: 1.18;
   }
 
   .result-section-title p {
     max-width: none;
-    margin-top: 1.5mm;
-    font-size: 9.5pt;
+    margin-top: 0.7mm;
+    font-size: 6.8pt;
+    line-height: 1.25;
   }
 
   .radar-print-section,
   .actions-print-section {
-    break-before: page;
-    page-break-before: always;
+    break-before: auto;
+    page-break-before: auto;
   }
 
   .overall-card,
@@ -3018,26 +3026,32 @@ p {
   }
 
   .overall-card {
-    grid-template-columns: minmax(0, 1.15fr) minmax(58mm, 0.85fr);
-    gap: 6mm;
+    grid-template-columns: minmax(0, 1.12fr) minmax(44mm, 0.88fr);
+    gap: 3mm;
     align-items: center;
-    margin-bottom: 6mm;
-    padding: 6mm;
-    border-top-width: 2.2mm;
+    padding: 3.2mm;
+    border-top-width: 1.4mm;
   }
 
   .overall-card h2 {
-    margin: 2mm 0 3mm;
-    font-size: 18pt;
+    margin: 1mm 0 1.4mm;
+    font-size: 12.6pt;
+    line-height: 1.15;
   }
 
   .overall-card p {
-    font-size: 10pt;
+    margin: 0;
+    font-size: 7pt;
+    line-height: 1.28;
+  }
+
+  .overall-card span {
+    font-size: 6.8pt;
   }
 
   .maturity-pyramid {
-    gap: 2mm;
-    padding: 4mm;
+    gap: 1mm;
+    padding: 2mm;
   }
 
   .maturity-pyramid::before {
@@ -3045,22 +3059,24 @@ p {
   }
 
   .maturity-pyramid-row {
-    min-height: 11mm;
-    padding: 2mm 5mm;
+    min-height: 7.4mm;
+    padding: 1mm 3mm;
   }
 
   .maturity-pyramid-row strong {
-    font-size: 10pt;
+    font-size: 7.4pt;
+    line-height: 1.1;
   }
 
   .maturity-pyramid-row small,
   .maturity-pyramid-row em {
-    font-size: 8pt;
+    font-size: 6.2pt;
+    line-height: 1.1;
   }
 
   .round-journey {
     overflow: visible;
-    padding: 5mm;
+    padding: 2.6mm;
   }
 
   .round-journey-line {
@@ -3069,58 +3085,84 @@ p {
 
   .round-journey-cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 4mm;
+    gap: 2mm;
   }
 
   .round-journey-card {
-    gap: 3mm;
-    padding: 4mm;
+    gap: 1.8mm;
+    padding: 2.4mm;
   }
 
   .round-orb {
-    width: 13mm;
-    height: 13mm;
+    width: 9mm;
+    height: 9mm;
   }
 
   .round-orb span {
-    width: 8mm;
-    height: 8mm;
-    font-size: 8pt;
+    width: 5.8mm;
+    height: 5.8mm;
+    font-size: 6.2pt;
   }
 
   .round-journey-card strong {
-    font-size: 18pt;
+    margin-top: 1mm;
+    font-size: 11.5pt;
   }
 
   .round-journey-card p {
-    margin: 2mm 0;
-    font-size: 9pt;
+    margin: 1mm 0;
+    font-size: 6.8pt;
+    line-height: 1.25;
+  }
+
+  .round-journey-card > div:last-child > span {
+    font-size: 6.8pt;
+  }
+
+  .round-motion-bar {
+    height: 1.4mm;
   }
 
   .radar-panel {
-    grid-template-columns: 74mm minmax(0, 1fr);
-    gap: 6mm;
+    grid-template-columns: 52mm minmax(0, 1fr);
+    gap: 3mm;
     align-items: start;
   }
 
   .radar-chart-wrap {
-    min-height: 74mm;
-    padding: 4mm;
+    min-height: 52mm;
+    padding: 2mm;
   }
 
   .radar-chart {
-    width: 70mm;
+    width: 49mm;
+  }
+
+  .radar-label {
+    font-size: 10px;
   }
 
   .radar-breakdown {
-    gap: 2mm;
-    padding: 4mm;
+    gap: 1mm;
+    padding: 2mm;
+  }
+
+  .radar-breakdown-head {
+    gap: 0.6mm;
+    padding-bottom: 1.2mm;
+  }
+
+  .radar-breakdown-head span,
+  .radar-breakdown-head p,
+  .radar-score-list .domain-score-head span {
+    font-size: 6.3pt;
   }
 
   .radar-score-list article {
-    grid-template-columns: minmax(0, 1fr) 18mm;
-    gap: 2mm;
-    padding: 2mm 0 2mm 2.5mm;
+    grid-template-columns: minmax(0, 1fr) 12mm;
+    gap: 1mm;
+    padding: 1mm 0 1mm 1.6mm;
+    border-left-width: 1mm;
   }
 
   .domain-score-bar,
@@ -3128,41 +3170,61 @@ p {
     display: none;
   }
 
+  .domain-score-main {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1.4mm;
+  }
+
+  .radar-score-list .domain-score-head strong {
+    font-size: 7pt;
+    line-height: 1.15;
+  }
+
   .radar-score-list article p {
-    font-size: 13pt;
+    font-size: 8pt;
   }
 
   .action-list {
-    gap: 4mm;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2mm;
   }
 
   .action-list article {
-    grid-template-columns: 10mm minmax(0, 1fr);
-    gap: 4mm;
-    padding: 4.5mm;
+    grid-template-columns: 5.5mm minmax(0, 1fr);
+    gap: 1.5mm;
+    padding: 2.1mm;
+    border-left-width: 1.4mm;
     break-inside: avoid;
     page-break-inside: avoid;
   }
 
   .action-list article > span {
-    width: 9mm;
-    height: 9mm;
-    font-size: 9pt;
+    width: 5.2mm;
+    height: 5.2mm;
+    font-size: 6pt;
   }
 
   .action-list h3 {
-    margin: 1mm 0 2mm;
-    font-size: 14pt;
+    margin: 0 0 0.6mm;
+    font-size: 7.4pt;
+    line-height: 1.16;
   }
 
   .action-list strong {
-    font-size: 10pt;
-    line-height: 1.45;
+    font-size: 6.25pt;
+    line-height: 1.22;
   }
 
   .action-list em {
-    margin-top: 2mm;
-    font-size: 9pt;
+    margin-top: 0.6mm;
+    font-size: 5.9pt;
+    line-height: 1.18;
+  }
+
+  .action-list p {
+    margin-bottom: 0.5mm;
+    font-size: 5.8pt;
+    line-height: 1.15;
   }
 
   a[href]::after {
